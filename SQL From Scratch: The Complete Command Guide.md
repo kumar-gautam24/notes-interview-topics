@@ -13,6 +13,35 @@
 7. [Query Building Keywords](#query-building-keywords)
 8. [Transaction Control](#transaction-control)
 
+   ## Table of Contents
+- [Basic Queries](#basic-queries)
+- [Filtering Data](#filtering-data)
+- [Sorting and Limiting](#sorting-and-limiting)
+- [Joins](#joins)
+- [Aggregation Functions](#aggregation-functions)
+- [Grouping Data](#grouping-data)
+- [Subqueries](#subqueries)
+- [Common Table Expressions](#common-table-expressions)
+- [Window Functions](#window-functions)
+- [Data Manipulation](#data-manipulation)
+- [Data Definition](#data-definition)
+- [Indexes](#indexes)
+- [Transactions](#transactions)
+- [Views](#views)
+- [Stored Procedures](#stored-procedures)
+- [Optimization Techniques](#optimization-techniques)
+
+   # SQL Structure Rules: Order and Syntax Guide
+
+## Table of Contents
+1. [SQL Statement Structure](#sql-statement-structure)
+2. [SQL Query Clause Order](#sql-query-clause-order)
+3. [SQL DDL Statement Order](#sql-ddl-statement-order)
+4. [SQL DML Statement Format](#sql-dml-statement-format)
+5. [SQL Statement Termination](#sql-statement-termination)
+6. [SQL Basic Questions and Answers](#sql-basic-questions-and-answers)
+
+
 ## Data Types
 
 ### String Data Types
@@ -522,23 +551,7 @@ SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
 
 SQL (Structured Query Language) is the standard language for managing and manipulating relational databases. This guide will take you from absolute beginner to proficient SQL user with detailed explanations, examples, and optimization tips for every major SQL command.
 
-## Table of Contents
-- [Basic Queries](#basic-queries)
-- [Filtering Data](#filtering-data)
-- [Sorting and Limiting](#sorting-and-limiting)
-- [Joins](#joins)
-- [Aggregation Functions](#aggregation-functions)
-- [Grouping Data](#grouping-data)
-- [Subqueries](#subqueries)
-- [Common Table Expressions](#common-table-expressions)
-- [Window Functions](#window-functions)
-- [Data Manipulation](#data-manipulation)
-- [Data Definition](#data-definition)
-- [Indexes](#indexes)
-- [Transactions](#transactions)
-- [Views](#views)
-- [Stored Procedures](#stored-procedures)
-- [Optimization Techniques](#optimization-techniques)
+
 
 ## Basic Queries
 
@@ -2281,6 +2294,230 @@ DROP PROCEDURE IF EXISTS update_employee_salary;
    SELECT * FROM employees WHERE department_id = 90;
    SET SHOWPLAN_TEXT OFF;
    ```
+
+  
+## SQL Statement Structure
+
+SQL statements follow specific structures depending on their type. Here are the main categories:
+
+### 1. Data Query Language (DQL)
+- Used to retrieve data
+- Primary statement: `SELECT`
+
+### 2. Data Definition Language (DDL)
+- Used to define database structure
+- Primary statements: `CREATE`, `ALTER`, `DROP`, `TRUNCATE`
+
+### 3. Data Manipulation Language (DML)
+- Used to manipulate data within tables
+- Primary statements: `INSERT`, `UPDATE`, `DELETE`
+
+### 4. Data Control Language (DCL)
+- Used to control access to data
+- Primary statements: `GRANT`, `REVOKE`
+
+### 5. Transaction Control Language (TCL)
+- Used to manage transactions
+- Primary statements: `COMMIT`, `ROLLBACK`, `SAVEPOINT`
+
+## SQL Query Clause Order
+
+SELECT statements must follow this exact order:
+
+```
+1. SELECT
+2. FROM
+3. JOIN
+4. WHERE
+5. GROUP BY
+6. HAVING
+7. ORDER BY
+8. LIMIT
+```
+
+| Clause | Purpose | Required? |
+|--------|---------|-----------|
+| SELECT | Specifies which columns to retrieve | Yes |
+| FROM | Specifies which table(s) to query | Yes (for data retrieval) |
+| JOIN | Combines rows from different tables | No |
+| WHERE | Filters rows before grouping | No |
+| GROUP BY | Groups rows with the same values | No |
+| HAVING | Filters groups after grouping | No (requires GROUP BY) |
+| ORDER BY | Sorts the result set | No |
+| LIMIT | Limits the number of returned rows | No |
+
+### Logical Processing Order
+
+The database processes these clauses in a different order than they are written:
+
+1. FROM + JOIN (determine data source)
+2. WHERE (filter individual rows)
+3. GROUP BY (create groups)
+4. HAVING (filter groups)
+5. SELECT (select final columns)
+6. ORDER BY (sort results)
+7. LIMIT (restrict number of returned rows)
+
+This explains why:
+- You cannot use column aliases from SELECT in WHERE
+- You can use column aliases from SELECT in ORDER BY
+- You cannot filter on aggregated values in WHERE, but you can in HAVING
+
+## SQL DDL Statement Order
+
+### CREATE TABLE Statement
+
+```sql
+CREATE TABLE [IF NOT EXISTS] table_name (
+    column1 datatype [constraints],
+    column2 datatype [constraints],
+    ...
+    [table_constraints]
+);
+```
+
+### ALTER TABLE Statement
+
+```sql
+ALTER TABLE table_name
+    [ADD column_name datatype [constraints]]
+    [DROP COLUMN column_name]
+    [MODIFY COLUMN column_name datatype [constraints]]
+    [ADD constraint]
+    [DROP constraint];
+```
+
+### CREATE INDEX Statement
+
+```sql
+CREATE [UNIQUE] INDEX index_name
+ON table_name (column1, column2, ...);
+```
+
+## SQL DML Statement Format
+
+### INSERT Statement
+
+```sql
+INSERT INTO table_name
+    [(column1, column2, ...)]
+VALUES
+    (value1, value2, ...),
+    (value1, value2, ...);
+```
+
+### UPDATE Statement
+
+```sql
+UPDATE table_name
+SET column1 = value1, column2 = value2, ...
+WHERE condition;
+```
+
+### DELETE Statement
+
+```sql
+DELETE FROM table_name
+WHERE condition;
+```
+
+## SQL Statement Termination
+
+In MySQL and most other database systems, SQL statements must be terminated with a semicolon (`;`). This is especially important when:
+
+1. Running multiple statements in a single execution
+2. Using SQL in scripts
+3. Using SQL in stored procedures or functions
+
+Example:
+```sql
+CREATE DATABASE my_database;
+USE my_database;
+CREATE TABLE employees (id INT, name VARCHAR(100));
+```
+
+Each statement is properly terminated with a semicolon.
+
+## SQL Basic Questions and Answers
+
+### 1. What is SQL?
+SQL (Structured Query Language) is a standard programming language specifically designed for managing and manipulating relational databases. It allows users to create, retrieve, update, and delete data, as well as manage database structures.
+
+### 2. What is a database?
+A database is an organized collection of structured data stored electronically. It allows for efficient retrieval, manipulation, and management of data.
+
+### 3. What is a table?
+A table is a collection of related data organized in rows and columns. Each row represents a record, and each column represents a field.
+
+### 4. What is the difference between DDL, DML, DCL, and TCL?
+- **DDL (Data Definition Language)**: Commands that define database structure (CREATE, ALTER, DROP)
+- **DML (Data Manipulation Language)**: Commands that manipulate data (SELECT, INSERT, UPDATE, DELETE)
+- **DCL (Data Control Language)**: Commands that control access (GRANT, REVOKE)
+- **TCL (Transaction Control Language)**: Commands that manage transactions (COMMIT, ROLLBACK)
+
+### 5. What is a primary key?
+A primary key is a column or set of columns that uniquely identifies each row in a table. It cannot contain NULL values and must be unique.
+
+### 6. What is a foreign key?
+A foreign key is a column or set of columns that creates a link between data in two tables. It refers to the primary key in another table.
+
+### 7. What is the difference between CHAR and VARCHAR?
+- **CHAR**: Fixed-length string. Always uses the specified length in storage, padded with spaces.
+- **VARCHAR**: Variable-length string. Uses only the space needed for the actual data plus 1-2 bytes.
+
+### 8. What is the difference between DELETE and TRUNCATE?
+- **DELETE**: DML command that removes specified rows, can use WHERE clause, slower, can be rolled back.
+- **TRUNCATE**: DDL command that removes all rows, cannot use WHERE clause, faster, cannot be rolled back easily.
+
+### 9. What is AUTO_INCREMENT?
+AUTO_INCREMENT is a column attribute that automatically generates a unique number for each new row inserted into a table. Typically used with primary keys.
+
+### 10. What is the difference between UNIQUE and PRIMARY KEY constraints?
+- Both ensure uniqueness of values in columns.
+- A table can have multiple UNIQUE constraints but only one PRIMARY KEY.
+- UNIQUE constraint allows NULL values (usually one NULL), while PRIMARY KEY doesn't allow NULL values.
+
+### 11. What is JOIN in SQL?
+JOIN is a clause used to combine rows from two or more tables based on a related column. Types include INNER JOIN, LEFT JOIN, RIGHT JOIN, and FULL JOIN.
+
+### 12. What is GROUP BY used for?
+GROUP BY groups rows that have the same values in specified columns into summary rows, typically used with aggregate functions like COUNT, MAX, MIN, SUM, AVG.
+
+### 13. What is the difference between WHERE and HAVING?
+- **WHERE**: Filters rows before grouping, cannot use aggregate functions
+- **HAVING**: Filters groups after GROUP BY, can use aggregate functions
+
+### 14. What is a VIEW in SQL?
+A VIEW is a virtual table based on the result of a SQL statement. It contains rows and columns, just like a real table, but doesn't store the data physically.
+
+### 15. How do you check if a database exists in MySQL?
+```sql
+SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = 'database_name';
+```
+
+### 16. How do you check if a table exists in MySQL?
+```sql
+SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES 
+WHERE TABLE_SCHEMA = 'database_name' AND TABLE_NAME = 'table_name';
+```
+
+### 17. How do you check if a column exists in a table in MySQL?
+```sql
+SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_SCHEMA = 'database_name' 
+AND TABLE_NAME = 'table_name' 
+AND COLUMN_NAME = 'column_name';
+```
+
+### 18. What is the purpose of the NULL value in SQL?
+NULL represents missing or unknown data. It's not the same as zero, an empty string, or a blank space. NULL cannot be compared using standard comparison operators (=, <, >).
+
+### 19. What is an Index in SQL?
+An index is a database structure that improves the speed of data retrieval operations on a table. It works similar to an index in a book, allowing the database to find data without scanning the entire table.
+
+### 20. What is the difference between DROP and TRUNCATE?
+- **DROP**: Removes the entire table including structure, indexes, constraints, triggers
+- **TRUNCATE**: Removes all rows from a table but keeps the table structure intact
 
 **Tips:**
 - Regularly analyze and update statistics

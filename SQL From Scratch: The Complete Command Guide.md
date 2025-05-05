@@ -1,5 +1,523 @@
 # SQL From Scratch: The Complete Command Guide
 
+
+# SQL Keywords and Usage Reference Guide
+
+## Table of Contents
+1. [Data Types](#data-types)
+2. [Constraints](#constraints)
+3. [Database Objects Management](#database-objects-management)
+4. [Table Operations](#table-operations)
+5. [Column Modifications](#column-modifications)
+6. [Checking Object Existence](#checking-object-existence)
+7. [Query Building Keywords](#query-building-keywords)
+8. [Transaction Control](#transaction-control)
+
+## Data Types
+
+### String Data Types
+
+| Data Type | Description | Syntax | Example |
+|-----------|-------------|--------|---------|
+| `CHAR` | Fixed-length string | `CHAR(size)` | `CHAR(10)` - Stores exactly 10 characters, padded with spaces if needed |
+| `VARCHAR` | Variable-length string | `VARCHAR(max_size)` | `VARCHAR(100)` - Stores up to 100 characters, uses only needed space |
+| `TEXT` | Large text data | `TEXT` | Used for large documents, comments, etc. |
+| `ENUM` | String object with value from allowed list | `ENUM('value1', 'value2', ...)` | `ENUM('small', 'medium', 'large')` |
+
+**Notes on VARCHAR**:
+- `VARCHAR` is the most commonly used string type
+- Only uses the space actually needed (plus 1-2 bytes to store length)
+- Maximum size varies by database system (MySQL: up to 65,535 characters)
+- More efficient than `CHAR` for columns with variable length content
+
+### Numeric Data Types
+
+| Data Type | Description | Syntax | Example |
+|-----------|-------------|--------|---------|
+| `INT` | Integer (whole number) | `INT` | Typically -2^31 to 2^31-1 |
+| `TINYINT` | Very small integer | `TINYINT` | -128 to 127 |
+| `SMALLINT` | Small integer | `SMALLINT` | -32,768 to 32,767 |
+| `MEDIUMINT` | Medium integer | `MEDIUMINT` | -8,388,608 to 8,388,607 |
+| `BIGINT` | Large integer | `BIGINT` | -2^63 to 2^63-1 |
+| `DECIMAL` | Fixed-point number | `DECIMAL(p,s)` | `DECIMAL(10,2)` - Up to 10 digits with 2 after decimal point |
+| `FLOAT` | Single-precision float | `FLOAT(p)` | Approximate numeric values |
+| `DOUBLE` | Double-precision float | `DOUBLE(p,s)` | Higher precision than FLOAT |
+
+**Notes on DECIMAL**:
+- `DECIMAL(10,2)` can store values from -99999999.99 to 99999999.99
+- First parameter (p) is precision - total number of digits
+- Second parameter (s) is scale - digits after decimal point
+
+### Date and Time Data Types
+
+| Data Type | Description | Format | Example |
+|-----------|-------------|--------|---------|
+| `DATE` | Date only | 'YYYY-MM-DD' | '2023-05-15' |
+| `TIME` | Time only | 'HH:MM:SS' | '14:30:00' |
+| `DATETIME` | Date and time | 'YYYY-MM-DD HH:MM:SS' | '2023-05-15 14:30:00' |
+| `TIMESTAMP` | Date and time, stored as seconds from epoch | 'YYYY-MM-DD HH:MM:SS' | Automatically updates on record changes |
+| `YEAR` | Year only | YYYY | 2023 |
+
+### Other Data Types
+
+| Data Type | Description | Example Use Case |
+|-----------|-------------|-----------------|
+| `BOOLEAN/BOOL` | True or False | Flags, status indicators |
+| `BLOB` | Binary Large Object | Store binary data like images |
+| `JSON` | JSON formatted data | Store structured data |
+| `UUID` | Universally Unique Identifier | Globally unique identifiers |
+
+## Constraints
+
+### PRIMARY KEY
+Makes a column (or set of columns) the unique identifier for the table. Cannot contain NULL values.
+
+```sql
+CREATE TABLE employees (
+    employee_id INT PRIMARY KEY,  -- Single column primary key
+    first_name VARCHAR(50)
+);
+
+-- OR --
+
+CREATE TABLE order_items (
+    order_id INT,
+    product_id INT,
+    quantity INT,
+    PRIMARY KEY (order_id, product_id)  -- Composite primary key
+);
+```
+
+### AUTO_INCREMENT
+Automatically generates a unique number when a new record is inserted. Used with the PRIMARY KEY constraint.
+
+```sql
+CREATE TABLE employees (
+    employee_id INT PRIMARY KEY AUTO_INCREMENT,  -- Will automatically assign 1, 2, 3, etc.
+    name VARCHAR(100)
+);
+```
+
+**How AUTO_INCREMENT works**:
+- Starts at 1 by default (can be changed)
+- Increments by 1 for each new record
+- If a row is deleted, its number is not reused (by default)
+- Different syntax in other database systems:
+  - SQL Server: `IDENTITY(seed, increment)`
+  - PostgreSQL: `SERIAL` or `GENERATED AS IDENTITY`
+  - Oracle: Sequence objects or `IDENTITY` (12c+)
+
+### NOT NULL
+Ensures a column cannot contain NULL values.
+
+```sql
+CREATE TABLE employees (
+    employee_id INT PRIMARY KEY AUTO_INCREMENT,
+    first_name VARCHAR(50) NOT NULL,  -- Must always have a value
+    middle_name VARCHAR(50),          -- Can be NULL (optional)
+    last_name VARCHAR(50) NOT NULL    -- Must always have a value
+);
+```
+
+**When to use NOT NULL**:
+- Required fields that must have a value
+- Fields used in calculations or important operations
+- Improves query performance (no need to check for NULL)
+- Makes database design more robust
+
+### UNIQUE
+Ensures all values in a column are unique.
+
+```sql
+CREATE TABLE users (
+    user_id INT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(100) UNIQUE,  -- No two users can have the same email
+    username VARCHAR(50) UNIQUE  -- No two users can have the same username
+);
+```
+
+### DEFAULT
+Provides a default value when no value is specified.
+
+```sql
+CREATE TABLE orders (
+    order_id INT PRIMARY KEY AUTO_INCREMENT,
+    customer_id INT NOT NULL,
+    order_date DATETIME DEFAULT CURRENT_TIMESTAMP,  -- Uses current time if not specified
+    status VARCHAR(20) DEFAULT 'Pending'  -- Uses 'Pending' if not specified
+);
+```
+
+### CHECK
+Ensures values in a column meet a specific condition.
+
+```sql
+CREATE TABLE products (
+    product_id INT PRIMARY KEY AUTO_INCREMENT,
+    product_name VARCHAR(100) NOT NULL,
+    price DECIMAL(10, 2) CHECK (price > 0),  -- Price must be positive
+    stock INT CHECK (stock >= 0)  -- Stock cannot be negative
+);
+```
+
+### FOREIGN KEY
+Creates a link between tables by referencing a PRIMARY KEY in another table.
+
+```sql
+CREATE TABLE orders (
+    order_id INT PRIMARY KEY AUTO_INCREMENT,
+    customer_id INT,
+    order_date DATE,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+);
+```
+
+## Database Objects Management
+
+### Creating a Database
+
+```sql
+-- Basic create
+CREATE DATABASE my_database;
+
+-- With character set and collation
+CREATE DATABASE my_database
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_unicode_ci;
+
+-- Create only if it doesn't exist
+CREATE DATABASE IF NOT EXISTS my_database;
+```
+
+### Dropping a Database
+
+```sql
+-- Delete database
+DROP DATABASE my_database;
+
+-- Delete only if it exists
+DROP DATABASE IF EXISTS my_database;
+```
+
+### Creating a Table
+
+```sql
+CREATE TABLE employees (
+    employee_id INT PRIMARY KEY AUTO_INCREMENT,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE,
+    hire_date DATE,
+    department VARCHAR(50),
+    salary DECIMAL(10, 2)
+);
+```
+
+### Dropping a Table
+
+```sql
+-- Remove table
+DROP TABLE employees;
+
+-- Remove only if it exists
+DROP TABLE IF EXISTS employees;
+```
+
+### Truncating a Table
+Removes all data but keeps the structure.
+
+```sql
+TRUNCATE TABLE employees;
+```
+
+## Table Operations
+
+### Altering Tables
+
+```sql
+-- Add a new column
+ALTER TABLE employees ADD COLUMN phone VARCHAR(20);
+
+-- Drop a column
+ALTER TABLE employees DROP COLUMN phone;
+
+-- Modify a column
+ALTER TABLE employees MODIFY COLUMN last_name VARCHAR(100) NOT NULL;
+
+-- Rename a table
+RENAME TABLE employees TO staff;
+-- OR
+ALTER TABLE employees RENAME TO staff;
+```
+
+### Creating Indexes
+
+```sql
+-- Create a basic index
+CREATE INDEX idx_lastname ON employees(last_name);
+
+-- Create a unique index
+CREATE UNIQUE INDEX idx_email ON employees(email);
+
+-- Create a composite index
+CREATE INDEX idx_name ON employees(last_name, first_name);
+```
+
+### Dropping Indexes
+
+```sql
+DROP INDEX idx_lastname ON employees;
+```
+
+## Column Modifications
+
+### Adding Constraints
+
+```sql
+-- Add primary key
+ALTER TABLE employees ADD PRIMARY KEY (employee_id);
+
+-- Add foreign key
+ALTER TABLE employees 
+ADD CONSTRAINT fk_department 
+FOREIGN KEY (department_id) REFERENCES departments(department_id);
+
+-- Add unique constraint
+ALTER TABLE employees ADD CONSTRAINT uc_email UNIQUE (email);
+
+-- Add check constraint
+ALTER TABLE employees ADD CONSTRAINT chk_salary CHECK (salary > 0);
+```
+
+### Dropping Constraints
+
+```sql
+-- Drop primary key
+ALTER TABLE employees DROP PRIMARY KEY;
+
+-- Drop foreign key
+ALTER TABLE employees DROP FOREIGN KEY fk_department;
+
+-- Drop unique constraint
+ALTER TABLE employees DROP CONSTRAINT uc_email;
+
+-- Drop check constraint
+ALTER TABLE employees DROP CONSTRAINT chk_salary;
+```
+
+## Checking Object Existence
+
+### Checking Database Existence
+
+```sql
+-- MySQL approach
+SELECT SCHEMA_NAME 
+FROM INFORMATION_SCHEMA.SCHEMATA 
+WHERE SCHEMA_NAME = 'database_name';
+
+-- Alternative approach
+SHOW DATABASES LIKE 'database_name';
+
+-- In procedural code (MySQL)
+IF EXISTS (SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = 'database_name') THEN
+    -- Database exists
+ELSE
+    -- Database doesn't exist
+END IF;
+```
+
+### Checking Table Existence
+
+```sql
+-- Standard SQL approach
+SELECT TABLE_NAME 
+FROM INFORMATION_SCHEMA.TABLES 
+WHERE TABLE_SCHEMA = 'database_name' 
+AND TABLE_NAME = 'table_name';
+
+-- MySQL approach
+SHOW TABLES LIKE 'table_name';
+
+-- In procedural code or scripts
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES 
+           WHERE TABLE_SCHEMA = 'database_name' 
+           AND TABLE_NAME = 'table_name') THEN
+    -- Table exists
+ELSE
+    -- Table doesn't exist
+END IF;
+```
+
+### Checking Column Existence
+
+```sql
+-- Standard SQL approach
+SELECT COLUMN_NAME 
+FROM INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_SCHEMA = 'database_name' 
+AND TABLE_NAME = 'table_name' 
+AND COLUMN_NAME = 'column_name';
+
+-- MySQL approach for listing all columns
+SHOW COLUMNS FROM table_name LIKE 'column_name';
+
+-- In conditional operations
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+           WHERE TABLE_SCHEMA = 'database_name' 
+           AND TABLE_NAME = 'table_name' 
+           AND COLUMN_NAME = 'column_name') THEN
+    -- Column exists
+ELSE
+    -- Column doesn't exist
+END IF;
+```
+
+### Creating Objects Conditionally
+
+```sql
+-- Create table only if it doesn't exist
+CREATE TABLE IF NOT EXISTS employees (
+    employee_id INT PRIMARY KEY AUTO_INCREMENT,
+    first_name VARCHAR(50) NOT NULL
+);
+
+-- Add column only if it doesn't exist (using procedure)
+DELIMITER //
+CREATE PROCEDURE add_column_if_not_exists()
+BEGIN
+    IF NOT EXISTS (
+        SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_NAME = 'employees' 
+        AND COLUMN_NAME = 'phone'
+    ) THEN
+        ALTER TABLE employees ADD COLUMN phone VARCHAR(20);
+    END IF;
+END //
+DELIMITER ;
+
+CALL add_column_if_not_exists();
+```
+
+## Query Building Keywords
+
+### SELECT Statement Components
+
+```sql
+SELECT column1, column2
+FROM table_name
+WHERE condition
+GROUP BY column_name
+HAVING group_condition
+ORDER BY column_name [ASC|DESC]
+LIMIT row_count OFFSET offset_value;
+```
+
+### JOIN Types
+
+```sql
+-- Inner join
+SELECT e.name, d.department_name
+FROM employees e
+INNER JOIN departments d ON e.department_id = d.department_id;
+
+-- Left join
+SELECT e.name, d.department_name
+FROM employees e
+LEFT JOIN departments d ON e.department_id = d.department_id;
+
+-- Right join
+SELECT e.name, d.department_name
+FROM employees e
+RIGHT JOIN departments d ON e.department_id = d.department_id;
+
+-- Full outer join (not in MySQL, can be simulated)
+SELECT e.name, d.department_name
+FROM employees e
+LEFT JOIN departments d ON e.department_id = d.department_id
+UNION
+SELECT e.name, d.department_name
+FROM employees e
+RIGHT JOIN departments d ON e.department_id = d.department_id
+WHERE e.department_id IS NULL;
+```
+
+### Subqueries
+
+```sql
+-- Subquery in WHERE
+SELECT name 
+FROM employees
+WHERE department_id IN (SELECT department_id FROM departments WHERE location = 'New York');
+
+-- Subquery in FROM
+SELECT avg_dept.department_id, avg_dept.avg_salary
+FROM (
+    SELECT department_id, AVG(salary) as avg_salary
+    FROM employees
+    GROUP BY department_id
+) AS avg_dept;
+
+-- Correlated subquery
+SELECT e1.name, e1.salary
+FROM employees e1
+WHERE salary > (
+    SELECT AVG(salary)
+    FROM employees e2
+    WHERE e2.department_id = e1.department_id
+);
+```
+
+## Transaction Control
+
+### Managing Transactions
+
+```sql
+-- Start a transaction
+START TRANSACTION;
+
+-- Execute statements
+INSERT INTO accounts (account_id, balance) VALUES (1, 1000);
+UPDATE accounts SET balance = balance - 500 WHERE account_id = 1;
+INSERT INTO transactions (account_id, amount, type) VALUES (1, 500, 'withdrawal');
+
+-- Commit if all succeeds
+COMMIT;
+
+-- Or rollback if there's an issue
+ROLLBACK;
+```
+
+### Savepoints
+
+```sql
+START TRANSACTION;
+
+INSERT INTO accounts (account_id, balance) VALUES (1, 1000);
+
+SAVEPOINT step1;
+
+UPDATE accounts SET balance = balance - 500 WHERE account_id = 1;
+
+-- If needed, rollback to savepoint
+ROLLBACK TO step1;
+
+-- Or commit all changes
+COMMIT;
+```
+
+### Transaction Isolation Levels
+
+```sql
+-- Set transaction isolation level
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+-- Available levels:
+-- READ UNCOMMITTED - Lowest isolation, dirty reads possible
+-- READ COMMITTED - Prevents dirty reads
+-- REPEATABLE READ - Prevents non-repeatable reads
+-- SERIALIZABLE - Highest isolation, prevents phantom reads
+```
+
 ## Introduction
 
 SQL (Structured Query Language) is the standard language for managing and manipulating relational databases. This guide will take you from absolute beginner to proficient SQL user with detailed explanations, examples, and optimization tips for every major SQL command.

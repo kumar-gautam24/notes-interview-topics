@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kubernetes: from one container to AKS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,500..800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF1F4; --surface:#FFFFFF; --sunk:#E3E8EE; --ink:#16202B; --muted:#56636F; --line:#D0D8E0;
+  --helm:#2F5FD0; --helm-soft:#DCE5FA; --buoy:#D9661F; --buoy-soft:#FBE6D8; --cargo:#E3AE2F;
+  --ok:#23845A; --ok-soft:#DAF1E5; --bad:#BC3B33; --bad-soft:#F8DEDB; --code-bg:#1B2633; --code-ink:#DCE6F0;
+  --serif:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --sans:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1720; --surface:#17212C; --sunk:#111A23; --ink:#E5EBF1; --muted:#97A5B4; --line:#2B3947;
+    --helm:#7099F3; --helm-soft:#1E2E4F; --buoy:#F08C4B; --buoy-soft:#3A2618; --cargo:#E9BC4F;
+    --ok:#4CC08A; --ok-soft:#173326; --bad:#EE746B; --bad-soft:#3A1C1A; --code-bg:#0A1118; --code-ink:#D6E1EC;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1720; --surface:#17212C; --sunk:#111A23; --ink:#E5EBF1; --muted:#97A5B4; --line:#2B3947;
+  --helm:#7099F3; --helm-soft:#1E2E4F; --buoy:#F08C4B; --buoy-soft:#3A2618; --cargo:#E9BC4F;
+  --ok:#4CC08A; --ok-soft:#173326; --bad:#EE746B; --bad-soft:#3A1C1A; --code-bg:#0A1118; --code-ink:#D6E1EC;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:calc(env(safe-area-inset-top,0px) + 70px)}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased}
+a{color:var(--helm)}
+img{max-width:100%}
+:focus-visible{outline:3px solid var(--buoy);outline-offset:2px;border-radius:4px}
+button{font:inherit;cursor:pointer}
+
+/* top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:10px 20px}
+.brand{font-family:var(--sans);font-weight:800;font-stretch:112%;font-size:17px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}
+.wheel{width:26px;height:26px;flex:none}
+.top .grow{flex:1}
+.meter{font-family:var(--sans);font-size:14px;color:var(--muted);white-space:nowrap}
+.meter b{color:var(--ink)}
+.ghost{background:none;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 11px;font-family:var(--sans);font-size:14px}
+.ghost:hover{border-color:var(--muted)}
+
+/* shell */
+.shell{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1240px;margin:0 auto}
+.map{position:sticky;top:calc(env(safe-area-inset-top,0px) + 55px);align-self:start;height:calc(100vh - 55px);overflow:auto;padding:22px 14px 40px 20px;border-right:1px solid var(--line)}
+.map ol{list-style:none;margin:0;padding:0;counter-reset:m}
+.map li a{display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:start;padding:8px 10px;border-radius:8px;text-decoration:none;color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.3}
+.map li a:hover{background:var(--sunk)}
+.map li a[aria-current="true"]{background:var(--helm-soft);color:var(--ink)}
+.map .num{font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+.map li a.done .num{color:var(--ok)}
+.map .lvl{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.map h2{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--muted);margin:18px 10px 6px}
+.map h2:first-child{margin-top:0}
+
+main{padding:34px 40px 90px;min-width:0}
+.lesson{display:none;max-width:760px}
+.lesson.on{display:block}
+
+/* type */
+h1{font-family:var(--sans);font-weight:800;font-stretch:118%;font-size:clamp(34px,5vw,54px);line-height:1.02;letter-spacing:-.025em;margin:6px 0 18px}
+.lesson > h1{font-size:clamp(30px,4.2vw,44px)}
+.kicker{font-family:var(--sans);font-size:15px;color:var(--muted);margin:0}
+h3.stage{font-family:var(--sans);font-weight:700;font-size:22px;letter-spacing:-.01em;margin:44px 0 10px;display:flex;align-items:center;gap:12px}
+h3.stage .dot{width:12px;height:12px;border-radius:3px;flex:none;background:var(--helm)}
+h3.stage[data-s="problem"] .dot{background:var(--bad)}
+h3.stage[data-s="picture"] .dot{background:var(--cargo)}
+h3.stage[data-s="how"] .dot{background:var(--helm)}
+h3.stage[data-s="try"] .dot{background:var(--buoy)}
+h3.stage[data-s="check"] .dot{background:var(--ok)}
+h3.stage[data-s="slip"] .dot{background:var(--muted)}
+h4{font-family:var(--sans);font-size:17px;font-weight:700;margin:26px 0 6px}
+p{margin:0 0 14px}
+.lede{font-size:21px;line-height:1.5;color:var(--ink)}
+.muted{color:var(--muted)}
+strong{font-weight:600}
+code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:1px 5px;border-radius:4px}
+ul.plain{padding-left:20px;margin:0 0 14px}
+ul.plain li{margin-bottom:6px}
+
+/* flow strip at top of each lesson */
+.flow{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 26px;padding:0;list-style:none;font-family:var(--sans);font-size:13px}
+.flow li{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.flow li + li::before{content:"";width:14px;height:1px;background:var(--line)}
+.flow i{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+/* picture / analogy */
+.picture{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--cargo);border-radius:10px;padding:16px 20px;margin:0 0 14px}
+.picture p:last-child{margin:0}
+
+/* code */
+.code{position:relative;margin:12px 0 18px}
+.code pre{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:var(--mono);font-size:14px;line-height:1.55}
+.code .cap{font-family:var(--sans);font-size:13px;color:var(--muted);margin:0 0 6px}
+.copy{position:absolute;right:8px;top:30px;background:rgba(255,255,255,.08);color:var(--code-ink);border:1px solid rgba(255,255,255,.18);border-radius:6px;font-family:var(--sans);font-size:12px;padding:3px 8px}
+.code .cmt{color:#8497AA}
+.code .key{color:#8FB8FF}
+.code .val{color:#F3C77A}
+
+/* tables */
+.tbl{overflow-x:auto;margin:10px 0 18px}
+table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:15px;line-height:1.4}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:700;color:var(--muted);font-size:13px}
+
+/* quiz */
+.quiz{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 14px}
+.quiz .q{font-weight:600;margin:0 0 10px}
+.quiz .opts{display:grid;gap:8px}
+.quiz button.opt{text-align:left;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:9px 12px;font-family:var(--sans);font-size:15px;line-height:1.35}
+.quiz button.opt:hover:not([disabled]){border-color:var(--helm)}
+.quiz button.opt.right{background:var(--ok-soft);border-color:var(--ok)}
+.quiz button.opt.wrong{background:var(--bad-soft);border-color:var(--bad)}
+.quiz button.opt[disabled]{cursor:default}
+.quiz .why{display:none;margin:12px 0 0;font-size:16px;color:var(--ink);border-top:1px dashed var(--line);padding-top:10px}
+.quiz.answered .why{display:block}
+.quiz .verdict{font-family:var(--sans);font-weight:700}
+
+/* slips */
+.slip{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;padding:12px 0;border-bottom:1px solid var(--line)}
+.slip:last-child{border-bottom:0}
+.slip b{font-family:var(--sans);font-size:15px;grid-column:2}
+.slip span{grid-column:2;font-size:16px;color:var(--muted)}
+.slip::before{content:"✕";grid-row:1 / span 2;font-family:var(--sans);font-weight:800;color:var(--bad);font-size:15px;line-height:1.6}
+
+/* lesson footer */
+.foot{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.btn{background:var(--helm);color:#fff;border:0;border-radius:9px;padding:10px 16px;font-family:var(--sans);font-weight:600;font-size:15px}
+.btn.alt{background:none;color:var(--ink);border:1px solid var(--line)}
+.btn.doneBtn[aria-pressed="true"]{background:var(--ok)}
+
+/* sims shared */
+.sim{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0 18px}
+.sim .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;font-family:var(--sans);font-size:14px}
+.sim .bar label{color:var(--muted)}
+.chipbtn{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:5px 12px;font-family:var(--sans);font-size:14px}
+.chipbtn[aria-pressed="true"]{background:var(--helm);border-color:var(--helm);color:#fff}
+.log{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);color:var(--code-ink);border-radius:8px;padding:10px 12px;height:130px;overflow:auto;margin-top:12px;line-height:1.5}
+.log div{white-space:nowrap}
+
+/* pods */
+.pods{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.pod{border:2px solid var(--buoy);background:var(--buoy-soft);border-radius:10px;padding:10px;font-family:var(--sans);font-size:13px;line-height:1.35;transition:opacity .4s, transform .4s}
+.pod .nm{font-family:var(--mono);font-size:12px;font-weight:600;word-break:break-all}
+.pod .st{margin-top:4px}
+.pod .st::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--ok);vertical-align:1px}
+.pod.creating{border-style:dashed;opacity:.7}
+.pod.creating .st::before{background:var(--cargo)}
+.pod.term{opacity:.35;transform:scale(.96)}
+.pod.term .st::before{background:var(--bad)}
+.pod button{margin-top:8px;background:none;border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--ink)}
+.pod.hit{outline:3px solid var(--helm);outline-offset:2px}
+.pod.out{border-color:var(--line);background:var(--sunk)}
+.pod label{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12.5px}
+
+/* anatomy */
+.anat{display:grid;grid-template-columns:1fr;gap:12px;font-family:var(--sans);font-size:14px}
+.zone{border:1.5px solid var(--line);border-radius:12px;padding:10px 12px}
+.zone > .zt{font-weight:700;font-size:13px;color:var(--muted);margin-bottom:8px}
+.comps{display:flex;flex-wrap:wrap;gap:8px}
+.comp{border:1.5px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px;transition:background .25s,border-color .25s}
+.comp.lit{background:var(--helm-soft);border-color:var(--helm)}
+.nodes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.caption{margin-top:12px;font-family:var(--serif);font-size:16px;min-height:78px}
+.caption b{font-family:var(--sans)}
+
+/* route chain */
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-family:var(--sans);font-size:14px;margin:6px 0 10px}
+.hop{border:1.5px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--bg)}
+.hop.ext{border-color:var(--buoy);background:var(--buoy-soft)}
+.hop.svc{border-color:var(--helm);background:var(--helm-soft)}
+.arrow{color:var(--muted)}
+
+/* home route map */
+.route{position:relative;margin:30px 0 34px;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0}
+.route li{position:relative;padding:28px 12px 14px 0}
+.route li::before{content:"";position:absolute;left:0;right:0;top:9px;height:3px;background:var(--line)}
+.route li.done::before{background:var(--ok)}
+.route a{position:relative;display:block;text-decoration:none;color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.3}
+.route a::before{content:"";position:absolute;left:0;top:-26px;width:16px;height:16px;border-radius:4px;background:var(--surface);border:3px solid var(--helm)}
+.route li.done a::before{background:var(--ok);border-color:var(--ok)}
+.route .n{display:block;font-weight:800;font-stretch:115%;font-size:13px;color:var(--muted)}
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:14px 0}
+.legend div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:16px;line-height:1.45}
+.legend b{display:flex;align-items:center;gap:8px;font-family:var(--sans);font-size:15px;margin-bottom:4px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+/* mobile */
+.mapToggle{display:none}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .map{position:fixed;left:0;top:calc(env(safe-area-inset-top,0px) + 55px);bottom:0;width:min(86vw,320px);height:auto;background:var(--bg);z-index:30;transform:translateX(-105%);transition:transform .25s;box-shadow:4px 0 24px rgba(0,0,0,.18)}
+  .map.open{transform:none}
+  .mapToggle{display:inline-block}
+  main{padding:24px 18px 80px}
+  .nodes{grid-template-columns:1fr}
+  .meter{display:none}
+  body{font-size:17px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <button class="ghost mapToggle" id="mapToggle" aria-expanded="false" aria-controls="map">Lessons</button>
+  <a class="brand" href="#l0">
+    <svg class="wheel" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="9" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="16" cy="16" r="3" fill="currentColor"/><g stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M16 2v5M16 25v5M2 16h5M25 16h5M6.1 6.1l3.5 3.5M22.4 22.4l3.5 3.5M6.1 25.9l3.5-3.5M22.4 9.6l3.5-3.5"/></g></svg>
+    Kubernetes, step by step
+  </a>
+  <span class="grow"></span>
+  <span class="meter" id="meter"></span>
+  <button class="ghost" id="themeBtn" aria-label="Switch colour theme">Theme</button>
+</header>
+
+<div class="shell">
+<nav class="map" id="map" aria-label="Lessons"></nav>
+<main id="main">
+
+<!-- ================= HOME ================= -->
+<section class="lesson" id="l0" data-title="How this course works" data-level="Start here">
+  <p class="kicker">A course in 11 lessons</p>
+  <h1>Kubernetes, from one container to a running AKS cluster</h1>
+  <p class="lede">You'll go from "what is a container" to deploying, exposing, scaling and debugging an app on Azure Kubernetes Service. Each lesson builds on the one before, so take them in order the first time.</p>
+
+  <ol class="route" id="route"></ol>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How every lesson is built</h3>
+  <p>Good technical teaching follows the same arc each time, so your brain knows where it is. Every lesson here moves through six stages, marked by the same coloured squares:</p>
+  <div class="legend">
+    <div><b><i style="background:var(--bad)"></i>The problem</b>What breaks without this idea. You learn a tool faster when you feel the pain it removes.</div>
+    <div><b><i style="background:var(--cargo)"></i>Picture it</b>A real-world analogy to hang the concept on before the jargon arrives.</div>
+    <div><b><i style="background:var(--helm)"></i>How it works</b>The actual mechanism, using the terms the official docs use.</div>
+    <div><b><i style="background:var(--buoy)"></i>Try it</b>YAML, commands, or an in-page simulation you can poke at.</div>
+    <div><b><i style="background:var(--ok)"></i>Check yourself</b>Short questions. Answering from memory is what makes it stick, so guess before you look.</div>
+    <div><b><i style="background:var(--muted)"></i>Where people slip</b>The mistakes that show up in real clusters and interviews.</div>
+  </div>
+
+  <h3 class="stage" data-s="try"><span class="dot"></span>What you need</h3>
+  <ul class="plain">
+    <li>For lessons 1 to 8: nothing. The simulations run in this page. If you want a real cluster on your laptop, install Docker Desktop plus <code>kind</code> or <code>minikube</code>, and <code>kubectl</code>.</li>
+    <li>For lessons 9 and 10: an Azure account and the Azure CLI (<code>az</code>). A small two-node cluster costs real money per hour, so the lab ends with a cleanup command.</li>
+  </ul>
+  <p class="muted">Sources this follows: the Kubernetes concepts docs (kubernetes.io/docs/concepts) and Microsoft's AKS core concepts pages. Links are in each lesson.</p>
+</section>
+
+<!-- ================= 1 CONTAINERS ================= -->
+<section class="lesson" id="l1" data-title="Containers" data-level="Basic">
+  <p class="kicker">Lesson 1 · Basic</p>
+  <h1>Containers: shipping software in a standard box</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>Your API runs fine on your laptop with Python 3.12 and a specific version of FastAPI. The server has Python 3.9 and an older OpenSSL. It crashes. A teammate's machine has a third set of versions. "Works on my machine" is the oldest bug in deployment, and it's caused by the app depending on whatever happens to be installed around it.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>Before shipping containers, dock workers loaded sacks, barrels and crates by hand, each differently. The steel shipping container changed that: one standard box, and every crane, ship and truck in the world knows how to move it without caring what's inside. A software container does the same for your app. Your code and everything it needs go inside the box; any machine with a container runtime can run it.</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How it works</h3>
+  <p>An <strong>image</strong> is a read-only template: your code, the language runtime, libraries and a start command, stacked as layers. You build it from a <strong>Dockerfile</strong>. A <strong>container</strong> is a running instance of an image. One image can run as fifty containers.</p>
+  <p>A container is not a small virtual machine. It's an ordinary Linux process that the kernel isolates using <strong>namespaces</strong> (it sees its own filesystem, network and process list) and limits using <strong>cgroups</strong> (it gets a fixed share of CPU and memory). All containers on a host share that host's kernel. That's why they start in seconds and weigh megabytes, while a VM boots a whole guest operating system.</p>
+  <div class="tbl"><table>
+    <tr><th></th><th>Virtual machine</th><th>Container</th></tr>
+    <tr><td>Isolation</td><td>Full guest OS on a hypervisor</td><td>Process isolated by the host kernel</td></tr>
+    <tr><td>Size</td><td>Gigabytes</td><td>Megabytes to a few hundred MB</td></tr>
+    <tr><td>Start time</td><td>Tens of seconds to minutes</td><td>Under a second to a few seconds</td></tr>
+    <tr><td>Kernel</td><td>Its own</td><td>Shared with the host</td></tr>
+  </table></div>
+  <p>Images live in a <strong>registry</strong>: Docker Hub publicly, or Azure Container Registry (ACR) privately when you're on Azure. An image name like <code>myacr.azurecr.io/hello-api:1.0</code> reads as registry / repository : tag.</p>
+
+  <h3 class="stage" data-s="try"><span class="dot"></span>Try it</h3>
+  <p>A minimal API we'll carry through the whole course.</p>
+  <div class="code"><p class="cap">main.py</p><pre>from fastapi import FastAPI
+import socket
+
+app = FastAPI()
+
+@app.get("/")
+def hello():
+    <span class="cmt"># hostname = the pod name once this runs in Kubernetes</span>
+    return {"msg": "hello", "served_by": socket.gethostname()}
+
+@app.get("/healthz")
+def health():
+    return {"ok": True}</pre></div>
+  <div class="code"><p class="cap">Dockerfile</p><pre>FROM python:3.12-slim
+WORKDIR /app
+RUN pip install --no-cache-dir fastapi uvicorn
+COPY main.py .
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]</pre></div>
+  <div class="code"><p class="cap">Build and run</p><pre>docker build -t hello-api:1.0 .
+docker run -d -p 8080:8000 --name hello hello-api:1.0
+curl localhost:8080          <span class="cmt"># {"msg":"hello","served_by":"3f2a9c..."}</span>
+docker ps                    <span class="cmt"># see it running</span>
+docker rm -f hello           <span class="cmt"># stop and remove</span></pre></div>
+  <p><code>-p 8080:8000</code> maps port 8080 on your laptop to port 8000 inside the container. Keep that "outside port : inside port" idea in mind; Kubernetes Services use the same pattern.</p>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">You run the same image three times. What do you have?</p><div class="opts">
+    <button class="opt">Three images</button>
+    <button class="opt" data-correct>One image, three containers</button>
+    <button class="opt">Three VMs sharing one image</button></div>
+    <p class="why">The image is the template; each <code>docker run</code> creates a separate running container from it.</p></div>
+  <div class="quiz"><p class="q">What do all containers on one host share?</p><div class="opts">
+    <button class="opt">Their filesystem</button>
+    <button class="opt">Their network IP</button>
+    <button class="opt" data-correct>The host's Linux kernel</button></div>
+    <p class="why">Namespaces give each container its own filesystem view and network, but they all run on the same kernel. That shared kernel is the main difference from VMs.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>Deploying with the <code>:latest</code> tag</b><span>You can't tell which version is running or roll back cleanly. Tag every build with a version or git SHA.</span></div>
+  <div class="slip"><b>Writing important data inside the container</b><span>A container's filesystem disappears when it's replaced. Data that must survive goes in a volume or a database.</span></div>
+  <div class="slip"><b>Binding the server to 127.0.0.1</b><span>Inside a container, localhost means only the container itself. Servers must listen on 0.0.0.0 to be reachable.</span></div>
+</section>
+
+<!-- ================= 2 WHY K8S ================= -->
+<section class="lesson" id="l2" data-title="Why orchestration" data-level="Basic">
+  <p class="kicker">Lesson 2 · Basic</p>
+  <h1>Why you need an orchestrator</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>One container on one server is easy. Now you have 40 containers across 6 servers. At 3 a.m. one server dies and takes 7 containers with it. On Friday a sale triples traffic. On Monday you need to ship version 1.1 without dropping requests. Each of these used to mean someone running scripts by hand.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>"Kubernetes" is Greek for helmsman, the person steering the ship. A better everyday picture is a thermostat. You don't tell it "turn the heater on for 12 minutes". You say "I want 24°C", and it keeps measuring and correcting forever. Kubernetes works the same way: you declare the state you want, and it keeps nudging reality toward it.</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How it works</h3>
+  <p>You describe the <strong>desired state</strong> in YAML: "run 3 copies of <code>hello-api:1.0</code>, each with half a CPU, reachable at the name <code>hello-api</code>". You submit it to the cluster's API. From then on, components called <strong>controllers</strong> run a loop:</p>
+  <div class="chain"><span class="hop">Observe actual state</span><span class="arrow">→</span><span class="hop">Compare with desired</span><span class="arrow">→</span><span class="hop svc">Act to close the gap</span><span class="arrow">↺</span></div>
+  <p>This is called <strong>reconciliation</strong>, and it is the single most important idea in Kubernetes. Almost every feature is a controller reconciling something. It gives you: scheduling containers onto machines with room, restarting or replacing failed ones (self-healing), scaling up and down, stable networking between services, rolling updates and rollbacks, and managed configuration and secrets.</p>
+  <p><strong>Declarative vs imperative.</strong> <code>kubectl run</code> or <code>kubectl scale</code> are imperative: do this now. <code>kubectl apply -f app.yaml</code> is declarative: make it look like this file. Real teams use declarative files kept in git, because the file becomes the record of what should be running.</p>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">A node with 2 of your 3 app copies crashes. Your YAML said 3 replicas. What does Kubernetes do?</p><div class="opts">
+    <button class="opt">Nothing until you reapply the YAML</button>
+    <button class="opt" data-correct>Notices only 1 is running and creates 2 more on healthy nodes</button>
+    <button class="opt">Restarts the crashed node</button></div>
+    <p class="why">The controller sees actual (1) ≠ desired (3) and closes the gap by itself. Kubernetes doesn't repair machines; it reschedules work away from them.</p></div>
+  <div class="quiz"><p class="q">Does Kubernetes build your container images?</p><div class="opts">
+    <button class="opt">Yes, from the Dockerfile in the YAML</button>
+    <button class="opt" data-correct>No, it runs images already pushed to a registry</button></div>
+    <p class="why">Building happens in Docker or your CI pipeline. Kubernetes only pulls and runs finished images.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>Fixing things with one-off commands</b><span>If you <code>kubectl edit</code> live and never update the YAML, the next <code>apply</code> silently undoes your fix.</span></div>
+  <div class="slip"><b>Using Kubernetes for one small app</b><span>It has real operational weight. A single API with modest traffic is often better on a PaaS like Azure App Service or Container Apps.</span></div>
+</section>
+
+<!-- ================= 3 CLUSTER ================= -->
+<section class="lesson" id="l3" data-title="Cluster anatomy" data-level="Basic">
+  <p class="kicker">Lesson 3 · Basic</p>
+  <h1>Inside a cluster: the control plane and the nodes</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>"I ran <code>kubectl apply</code> and my pods are stuck in Pending." To debug that, you need to know which part of the cluster was supposed to act and didn't. Without a mental map, Kubernetes feels like a black box that sometimes works.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>A port. The <strong>harbour office</strong> (control plane) holds the ledger of every shipment, decides which dock each container goes to, and dispatches crews. The <strong>docks</strong> (worker nodes) are where containers are actually unloaded and handled, each with a dock foreman who takes orders from the office.</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How it works</h3>
+  <p>A <strong>cluster</strong> is a set of machines split into two roles.</p>
+  <h4>Control plane: the brain</h4>
+  <ul class="plain">
+    <li><strong>kube-apiserver</strong> is the front door. Every request (from <code>kubectl</code>, from other components) goes through it. It's the only component that talks to etcd.</li>
+    <li><strong>etcd</strong> is a consistent key-value store holding the whole cluster state. If it's lost without a backup, the cluster forgets everything.</li>
+    <li><strong>kube-scheduler</strong> watches for pods with no node assigned and picks a node for each, based on requested CPU/memory and constraints.</li>
+    <li><strong>kube-controller-manager</strong> runs the built-in controllers (Deployment, ReplicaSet, Node and more) that do the reconciling.</li>
+    <li><strong>cloud-controller-manager</strong> talks to the cloud: it creates load balancers, attaches disks, and notices deleted VMs.</li>
+  </ul>
+  <h4>Worker nodes: the muscle</h4>
+  <ul class="plain">
+    <li><strong>kubelet</strong> is the agent on every node. It watches the API for pods assigned to its node and makes sure their containers are running and healthy.</li>
+    <li><strong>container runtime</strong> (usually <strong>containerd</strong>) pulls images and starts containers.</li>
+    <li><strong>kube-proxy</strong> programs network rules on the node so traffic sent to a Service reaches the right pods. Some networking setups (like Cilium) replace it.</li>
+  </ul>
+  <p>One rule simplifies everything: <strong>components don't call each other directly</strong>. They all watch the API server and write back to it. The scheduler never phones the kubelet; it writes "pod X → node 2" into the API, and node 2's kubelet notices.</p>
+
+  <h3 class="stage" data-s="try"><span class="dot"></span>Try it: trace a <code>kubectl apply</code></h3>
+  <p>Step through what happens when you apply a Deployment with 3 replicas.</p>
+  <div class="sim" id="anatSim">
+    <div class="anat">
+      <div class="zone"><div class="zt">Your laptop</div><div class="comps"><span class="comp" data-c="kubectl">kubectl</span></div></div>
+      <div class="zone"><div class="zt">Control plane</div><div class="comps">
+        <span class="comp" data-c="api">kube-apiserver</span><span class="comp" data-c="etcd">etcd</span><span class="comp" data-c="sched">kube-scheduler</span><span class="comp" data-c="cm">controller-manager</span><span class="comp" data-c="ccm">cloud-controller-manager</span></div></div>
+      <div class="nodes">
+        <div class="zone"><div class="zt">Node 1</div><div class="comps"><span class="comp" data-c="kubelet">kubelet</span><span class="comp" data-c="runtime">containerd</span><span class="comp" data-c="proxy">kube-proxy</span><span class="comp" data-c="podA">pod</span><span class="comp" data-c="podB">pod</span></div></div>
+        <div class="zone"><div class="zt">Node 2</div><div class="comps"><span class="comp" data-c="kubelet">kubelet</span><span class="comp" data-c="runtime">containerd</span><span class="comp" data-c="proxy">kube-proxy</span><span class="comp" data-c="podC">pod</span></div></div>
+      </div>
+    </div>
+    <div class="caption" id="anatCap" aria-live="polite"></div>
+    <div class="bar"><button class="btn alt" id="anatPrev">Back</button><button class="btn" id="anatNext">Next step</button><span class="muted" id="anatCount"></span></div>
+  </div>
+
+  <div class="code"><p class="cap">Look at a real cluster's parts</p><pre>kubectl get nodes -o wide              <span class="cmt"># the machines</span>
+kubectl get pods -n kube-system        <span class="cmt"># system components running as pods</span>
+kubectl cluster-info                   <span class="cmt"># where the API server lives</span></pre></div>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">Which component decides which node a new pod runs on?</p><div class="opts">
+    <button class="opt">kubelet</button><button class="opt" data-correct>kube-scheduler</button><button class="opt">kube-proxy</button></div>
+    <p class="why">The scheduler only assigns. The kubelet on that node then does the actual starting.</p></div>
+  <div class="quiz"><p class="q">Pods stay Pending forever and <code>kubectl describe pod</code> shows no node assigned. Which part do you suspect first?</p><div class="opts">
+    <button class="opt" data-correct>Scheduling: not enough free CPU/memory, or constraints no node satisfies</button>
+    <button class="opt">containerd failed to pull the image</button>
+    <button class="opt">kube-proxy rules are wrong</button></div>
+    <p class="why">No node assigned means the scheduler couldn't place it. An image pull failure happens later, after assignment, and shows as ImagePullBackOff.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>Thinking the control plane runs your app</b><span>Your pods run on worker nodes. The control plane only decides and records.</span></div>
+  <div class="slip"><b>Mixing up kubelet and kubectl</b><span>kubectl is your client tool. kubelet is the agent on each node. They never talk directly.</span></div>
+  <p class="muted">Docs: kubernetes.io/docs/concepts/overview/components</p>
+</section>
+
+<!-- ================= 4 PODS ================= -->
+<section class="lesson" id="l4" data-title="Pods" data-level="Basic">
+  <p class="kicker">Lesson 4 · Basic</p>
+  <h1>Pods: the smallest thing Kubernetes runs</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>Sometimes two processes belong together: your API and a small helper that ships its logs, or refreshes a certificate it reads. They need to share files and talk over localhost, and they should always be placed on the same machine and live and die together. Scheduling single containers can't express that.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>A pod is a flat shared by roommates. They share one street address (the pod's IP), one kitchen (shared volumes), and can shout to each other across the hall (localhost). When the lease ends, everyone moves out together, and the next flat has a different address.</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How it works</h3>
+  <ul class="plain">
+    <li>A <strong>pod</strong> wraps one or more containers. Most pods have exactly one; the extra-helper pattern is called a <strong>sidecar</strong>.</li>
+    <li>Each pod gets <strong>its own IP</strong>. Containers in the same pod share it and reach each other on <code>localhost</code>.</li>
+    <li>Pods are <strong>ephemeral</strong>. When one dies, it isn't revived; a new pod with a new name and a new IP replaces it. That fact drives the next two lessons.</li>
+    <li>Status moves through phases: <code>Pending</code> → <code>Running</code> → <code>Succeeded</code> or <code>Failed</code>. Inside, a container that keeps crashing shows <code>CrashLoopBackOff</code>, meaning kubelet is restarting it with growing delays.</li>
+  </ul>
+
+  <h3 class="stage" data-s="try"><span class="dot"></span>Try it</h3>
+  <div class="code"><p class="cap">pod.yaml</p><pre><span class="key">apiVersion:</span> v1
+<span class="key">kind:</span> Pod
+<span class="key">metadata:</span>
+  <span class="key">name:</span> hello-pod
+  <span class="key">labels:</span>
+    <span class="key">app:</span> <span class="val">hello-api</span>      <span class="cmt"># labels matter a lot from lesson 5 on</span>
+<span class="key">spec:</span>
+  <span class="key">containers:</span>
+  - <span class="key">name:</span> api
+    <span class="key">image:</span> hello-api:1.0
+    <span class="key">ports:</span>
+    - <span class="key">containerPort:</span> 8000</pre></div>
+  <div class="code"><p class="cap">The commands you'll use every day</p><pre>kubectl apply -f pod.yaml
+kubectl get pods -o wide              <span class="cmt"># status, IP, node</span>
+kubectl describe pod hello-pod        <span class="cmt"># events: scheduling, pulling, errors</span>
+kubectl logs hello-pod                <span class="cmt"># stdout of the container</span>
+kubectl exec -it hello-pod -- sh      <span class="cmt"># shell inside it</span>
+kubectl port-forward pod/hello-pod 8080:8000   <span class="cmt"># reach it from laptop</span>
+kubectl delete pod hello-pod          <span class="cmt"># gone for good, nothing replaces it</span></pre></div>
+  <p>Every Kubernetes object has the same four top-level fields: <code>apiVersion</code>, <code>kind</code>, <code>metadata</code> (name, labels) and <code>spec</code> (what you want). Once you see that, every YAML file reads the same way.</p>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">Two containers in the same pod. How does container A call container B on port 9000?</p><div class="opts">
+    <button class="opt" data-correct><code>localhost:9000</code></button><button class="opt">Container B's own IP</button><button class="opt">Through a Service</button></div>
+    <p class="why">They share one network namespace, so it's just localhost. That's also why two containers in a pod can't listen on the same port.</p></div>
+  <div class="quiz"><p class="q">You delete a bare pod (created from pod.yaml). What happens?</p><div class="opts">
+    <button class="opt">Kubernetes recreates it with the same IP</button><button class="opt">Kubernetes recreates it with a new IP</button><button class="opt" data-correct>Nothing recreates it</button></div>
+    <p class="why">A bare pod has no controller watching it. That's why you almost never create pods directly; lesson 5 fixes this.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>Hardcoding pod IPs</b><span>They change on every replacement. Use a Service name instead (lesson 6).</span></div>
+  <div class="slip"><b>One pod per app tier, all in one</b><span>Putting frontend, API and database in one pod means they can't scale separately. One pod = one tightly coupled unit.</span></div>
+</section>
+
+<!-- ================= 5 DEPLOYMENTS ================= -->
+<section class="lesson" id="l5" data-title="Deployments & self-healing" data-level="Basic → Intermediate">
+  <p class="kicker">Lesson 5 · Basic → Intermediate</p>
+  <h1>Deployments: keep N copies alive, update without downtime</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>From lesson 4: a dead pod stays dead. You want 3 copies running always, a way to change that to 10 during a sale, and a way to roll out version 1.1 a few pods at a time, with an undo button.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>A restaurant manager whose only rule is "3 cooks on shift". A cook walks out, a new one is called in. Switch to the new menu? The manager swaps cooks one at a time, so the kitchen never stops serving.</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How it works</h3>
+  <div class="chain"><span class="hop svc">Deployment</span><span class="arrow">manages →</span><span class="hop">ReplicaSet</span><span class="arrow">keeps N →</span><span class="hop ext">Pods</span></div>
+  <ul class="plain">
+    <li>A <strong>ReplicaSet</strong> keeps exactly N pods matching a <strong>label selector</strong> alive. That's the self-healing.</li>
+    <li>A <strong>Deployment</strong> manages ReplicaSets. When you change the pod template (say, the image tag), it creates a new ReplicaSet and shifts pods from old to new: a <strong>rolling update</strong>. <code>maxSurge</code> (extra pods allowed during rollout) and <code>maxUnavailable</code> (pods allowed to be down) control the pace.</li>
+    <li>The old ReplicaSet is kept at 0 replicas, which is how <code>kubectl rollout undo</code> works.</li>
+    <li><strong>Labels</strong> are key-value tags on objects. <strong>Selectors</strong> are queries over labels. The ReplicaSet doesn't track pods by name; it counts "pods with <code>app=hello-api</code>". Services use the same trick.</li>
+  </ul>
+
+  <h3 class="stage" data-s="try"><span class="dot"></span>Try it: break pods and watch them come back</h3>
+  <div class="sim" id="healSim">
+    <div class="bar">
+      <label for="replicas">replicas:</label>
+      <input type="range" id="replicas" min="1" max="6" value="3" aria-describedby="repVal">
+      <b id="repVal">3</b>
+      <span class="grow" style="flex:1"></span>
+      <button class="chipbtn" id="killRandom">Crash a node's pod</button>
+    </div>
+    <div class="pods" id="healPods"></div>
+    <div class="log" id="healLog" aria-live="polite"></div>
+  </div>
+  <p>Delete a pod and the ReplicaSet controller sees 2 ≠ 3 and creates a replacement with a new name and IP. Drag the slider and it adds or removes pods to match. That's reconciliation, live.</p>
+
+  <div class="code"><p class="cap">deployment.yaml</p><pre><span class="key">apiVersion:</span> apps/v1
+<span class="key">kind:</span> Deployment
+<span class="key">metadata:</span>
+  <span class="key">name:</span> hello-api
+<span class="key">spec:</span>
+  <span class="key">replicas:</span> 3
+  <span class="key">selector:</span>
+    <span class="key">matchLabels:</span>
+      <span class="key">app:</span> <span class="val">hello-api</span>        <span class="cmt"># must match template labels below</span>
+  <span class="key">strategy:</span>
+    <span class="key">rollingUpdate:</span> { <span class="key">maxSurge:</span> 1, <span class="key">maxUnavailable:</span> 0 }
+  <span class="key">template:</span>                   <span class="cmt"># the pod blueprint</span>
+    <span class="key">metadata:</span>
+      <span class="key">labels:</span>
+        <span class="key">app:</span> <span class="val">hello-api</span>
+    <span class="key">spec:</span>
+      <span class="key">containers:</span>
+      - <span class="key">name:</span> api
+        <span class="key">image:</span> hello-api:1.0
+        <span class="key">ports:</span> [{ <span class="key">containerPort:</span> 8000 }]
+        <span class="key">resources:</span>
+          <span class="key">requests:</span> { <span class="key">cpu:</span> 100m, <span class="key">memory:</span> 128Mi }   <span class="cmt"># scheduler uses this</span>
+          <span class="key">limits:</span>   { <span class="key">memory:</span> 256Mi }             <span class="cmt"># OOM-killed above this</span>
+        <span class="key">readinessProbe:</span>         <span class="cmt"># only send traffic when this passes</span>
+          <span class="key">httpGet:</span> { <span class="key">path:</span> /healthz, <span class="key">port:</span> 8000 }
+        <span class="key">livenessProbe:</span>          <span class="cmt"># restart container if this fails</span>
+          <span class="key">httpGet:</span> { <span class="key">path:</span> /healthz, <span class="key">port:</span> 8000 }
+          <span class="key">initialDelaySeconds:</span> 10</pre></div>
+  <div class="code"><p class="cap">Scale, update, roll back</p><pre>kubectl apply -f deployment.yaml
+kubectl get deploy,rs,pods -l app=hello-api
+kubectl scale deployment hello-api --replicas=5
+kubectl set image deployment/hello-api api=hello-api:1.1
+kubectl rollout status deployment/hello-api
+kubectl rollout history deployment/hello-api
+kubectl rollout undo deployment/hello-api</pre></div>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">You change the image from 1.0 to 1.1 and apply. What gets created?</p><div class="opts">
+    <button class="opt">A new Deployment</button><button class="opt" data-correct>A new ReplicaSet, which gradually takes over from the old one</button><button class="opt">New containers inside the existing pods</button></div>
+    <p class="why">Pods are never patched in place for an image change. The Deployment rolls a new ReplicaSet up and the old one down.</p></div>
+  <div class="quiz"><p class="q">What's the difference between a readiness and a liveness probe?</p><div class="opts">
+    <button class="opt" data-correct>Readiness failing removes the pod from traffic; liveness failing restarts the container</button>
+    <button class="opt">They're the same check run at different intervals</button>
+    <button class="opt">Readiness restarts the pod; liveness deletes it</button></div>
+    <p class="why">Readiness = "can I take requests right now?" Liveness = "am I stuck and need a restart?" Making liveness too aggressive causes restart loops during slow startups.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>Selector and template labels don't match</b><span>The API rejects the Deployment. Copy the labels exactly.</span></div>
+  <div class="slip"><b>No resource requests</b><span>The scheduler then packs pods blindly, nodes get overloaded, and pods get evicted under pressure.</span></div>
+  <div class="slip"><b>No readiness probe</b><span>New pods get traffic before the app has finished starting, so every rollout causes a burst of errors.</span></div>
+</section>
+
+<!-- ================= 6 CLUSTERIP ================= -->
+<section class="lesson" id="l6" data-title="Services & ClusterIP" data-level="Intermediate">
+  <p class="kicker">Lesson 6 · Intermediate</p>
+  <h1>Services and ClusterIP: one stable address for moving pods</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>Your frontend pods need to call the <code>hello-api</code> pods. But there are 3 of them, their IPs change every time one is replaced, and during a rollout the set changes every few seconds. What address does the frontend use?</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>A company's support phone number. Agents join, leave and change desks every day, but the number on the website never changes. Call it, and the switchboard connects you to whichever agent is free right now. A Service is that number; the pods are the agents.</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How it works</h3>
+  <ul class="plain">
+    <li>A <strong>Service</strong> gives a set of pods a stable virtual IP and a DNS name. It finds its pods with a <strong>label selector</strong>, exactly like a ReplicaSet.</li>
+    <li><strong>ClusterIP</strong> is the default type. The IP comes from a separate service address range and is reachable <strong>only from inside the cluster</strong>. It's how microservices, internal APIs and databases talk to each other.</li>
+    <li>Kubernetes keeps <strong>EndpointSlices</strong>: the live list of IPs of pods that match the selector <em>and are Ready</em>. A pod failing its readiness probe drops out of this list.</li>
+    <li><strong>kube-proxy</strong> on every node turns that list into routing rules, so a packet sent to <code>ClusterIP:port</code> is redirected to one of the pod IPs on <code>targetPort</code>. Nothing actually "listens" on the ClusterIP; it's a rule, not a server. (In iptables mode the pod is picked at random.)</li>
+    <li><strong>CoreDNS</strong> gives each Service a name: <code>hello-api</code> from the same namespace, or <code>hello-api.default.svc.cluster.local</code> in full.</li>
+  </ul>
+  <div class="chain"><span class="hop">frontend pod</span><span class="arrow">→</span><span class="hop svc">hello-api:80 (ClusterIP)</span><span class="arrow">→ kube-proxy rules →</span><span class="hop ext">one Ready pod :8000</span></div>
+  <p><strong>port vs targetPort:</strong> <code>port</code> is what callers use on the Service (80). <code>targetPort</code> is where the container actually listens (8000). Same idea as <code>docker run -p 8080:8000</code>.</p>
+
+  <h3 class="stage" data-s="try"><span class="dot"></span>Try it: what does the Service send traffic to?</h3>
+  <p>Toggle each pod's label and readiness, then send requests. Only pods that match the selector and are Ready are endpoints.</p>
+  <div class="sim" id="svcSim">
+    <div class="bar"><span>Service <code>hello-api</code> · selector <code>app=hello-api</code></span></div>
+    <div class="pods" id="svcPods"></div>
+    <div class="bar" style="margin-top:12px"><button class="btn" id="sendReq">Send request from frontend</button><button class="chipbtn" id="send10">Send 10</button></div>
+    <div class="caption" id="epList" aria-live="polite"></div>
+    <div class="log" id="svcLog" aria-live="polite"></div>
+  </div>
+
+  <div class="code"><p class="cap">service.yaml</p><pre><span class="key">apiVersion:</span> v1
+<span class="key">kind:</span> Service
+<span class="key">metadata:</span>
+  <span class="key">name:</span> hello-api
+<span class="key">spec:</span>
+  <span class="key">type:</span> ClusterIP          <span class="cmt"># default; you can omit this line</span>
+  <span class="key">selector:</span>
+    <span class="key">app:</span> <span class="val">hello-api</span>       <span class="cmt"># matches the Deployment's pod labels</span>
+  <span class="key">ports:</span>
+  - <span class="key">port:</span> 80              <span class="cmt"># what callers use</span>
+    <span class="key">targetPort:</span> 8000      <span class="cmt"># where the container listens</span></pre></div>
+  <div class="code"><p class="cap">Test it from inside the cluster</p><pre>kubectl apply -f service.yaml
+kubectl get svc hello-api                 <span class="cmt"># note CLUSTER-IP, EXTERNAL-IP is &lt;none&gt;</span>
+kubectl get endpointslices -l kubernetes.io/service-name=hello-api
+<span class="cmt"># throwaway pod to act as a client; run it a few times and watch served_by change</span>
+kubectl run tmp --rm -it --image=busybox --restart=Never -- wget -qO- http://hello-api
+<span class="cmt"># from your laptop, for testing only</span>
+kubectl port-forward svc/hello-api 8080:80</pre></div>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">Your Service exists but every request fails, and its EndpointSlice is empty. Most likely cause?</p><div class="opts">
+    <button class="opt" data-correct>The selector doesn't match the pod labels, or no matching pods are Ready</button>
+    <button class="opt">The ClusterIP ran out of addresses</button>
+    <button class="opt">You need a LoadBalancer instead</button></div>
+    <p class="why">This is the most common Service bug. Compare <code>kubectl get svc hello-api -o yaml</code> selector with <code>kubectl get pods --show-labels</code>.</p></div>
+  <div class="quiz"><p class="q">Can you <code>curl</code> a ClusterIP from your laptop?</p><div class="opts">
+    <button class="opt">Yes, it's a normal IP</button><button class="opt" data-correct>No, it only routes inside the cluster; use port-forward or a different Service type</button></div>
+    <p class="why">ClusterIP rules exist only on cluster nodes. For outside access, see the next lesson.</p></div>
+  <div class="quiz"><p class="q">Callers use port 80, the container listens on 8000. Which field is 8000?</p><div class="opts">
+    <button class="opt">port</button><button class="opt" data-correct>targetPort</button><button class="opt">nodePort</button></div>
+    <p class="why"><code>port</code> is the Service's port; <code>targetPort</code> is the container's.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>A label typo</b><span><code>app: hello-api</code> vs <code>app: helloapi</code> gives a Service with zero endpoints and no error message.</span></div>
+  <div class="slip"><b>Wrong targetPort</b><span>Endpoints look fine, but connections are refused because nothing listens on that port in the container.</span></div>
+  <div class="slip"><b>Calling across namespaces with the short name</b><span><code>hello-api</code> only resolves in the same namespace. Use <code>hello-api.other-ns</code> otherwise.</span></div>
+  <p class="muted">Docs: kubernetes.io/docs/concepts/services-networking/service/</p>
+</section>
+
+<!-- ================= 7 EXPOSING ================= -->
+<section class="lesson" id="l7" data-title="NodePort, LoadBalancer, Ingress" data-level="Intermediate">
+  <p class="kicker">Lesson 7 · Intermediate</p>
+  <h1>Getting traffic in from outside</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>ClusterIP is perfect between services, but your mobile app's users are on the internet. They need a public address that reaches your pods, ideally with one address serving several APIs.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>An office building. <strong>ClusterIP</strong> is the internal extension; only people inside can dial it. <strong>NodePort</strong> is a side door on every floor with the same door number. <strong>LoadBalancer</strong> is a staffed main entrance on the street that spreads visitors across those doors. <strong>Ingress</strong> is the receptionist at that entrance who reads your appointment and sends you to the right department.</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How it works</h3>
+  <p>The types are <strong>layered</strong>, each built on the previous one:</p>
+  <ul class="plain">
+    <li><strong>NodePort</strong> creates a ClusterIP, then also opens the same port (default range 30000–32767) on every node. Traffic to any <code>NodeIP:nodePort</code> reaches the Service, even if that node runs none of its pods. Fine for testing; awkward for production.</li>
+    <li><strong>LoadBalancer</strong> creates a NodePort and a ClusterIP, then asks the cloud-controller-manager to provision a real cloud load balancer with an external IP. On AKS that's an Azure Load Balancer with a public IP. While it's being provisioned, <code>EXTERNAL-IP</code> shows <code>&lt;pending&gt;</code>.</li>
+    <li><strong>Ingress</strong> isn't a Service type. It's a set of HTTP routing rules (host and path → Service), served by an <strong>ingress controller</strong> that you install, which itself sits behind one LoadBalancer. The newer <strong>Gateway API</strong> does the same job with a richer model.</li>
+    <li><strong>ExternalName</strong> is the odd one: a DNS alias to something outside the cluster, no proxying.</li>
+  </ul>
+
+  <h3 class="stage" data-s="try"><span class="dot"></span>Try it: follow the traffic path</h3>
+  <div class="sim" id="typeSim">
+    <div class="bar" role="group" aria-label="Service type">
+      <button class="chipbtn" data-t="cip" aria-pressed="true">ClusterIP</button>
+      <button class="chipbtn" data-t="np">NodePort</button>
+      <button class="chipbtn" data-t="lb">LoadBalancer</button>
+      <button class="chipbtn" data-t="ing">Ingress</button>
+    </div>
+    <div class="chain" id="typeChain"></div>
+    <div class="caption" id="typeCap" aria-live="polite"></div>
+    <div class="code" style="margin-bottom:0"><pre id="typeYaml"></pre></div>
+  </div>
+
+  <div class="tbl"><table>
+    <tr><th>Type</th><th>Reachable from</th><th>Typical use</th><th>Cost on AKS</th></tr>
+    <tr><td>ClusterIP</td><td>Inside the cluster</td><td>Service-to-service, databases</td><td>Free</td></tr>
+    <tr><td>NodePort</td><td>Anyone who can reach a node IP</td><td>Testing, custom external LB</td><td>Free, but nodes usually have no public IP</td></tr>
+    <tr><td>LoadBalancer</td><td>Internet (or VNet if internal)</td><td>One public TCP/HTTP entry</td><td>A public IP and LB rules per Service</td></tr>
+    <tr><td>Ingress</td><td>Internet via one LB</td><td>Many HTTP APIs, TLS, path routing</td><td>One LB shared by all routes</td></tr>
+  </table></div>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">You create a LoadBalancer Service. How many Service-level things exist?</p><div class="opts">
+    <button class="opt">Just the load balancer</button><button class="opt" data-correct>A ClusterIP, a NodePort on every node, and the cloud load balancer</button><button class="opt">A load balancer and an Ingress</button></div>
+    <p class="why">The layers stack: the cloud LB forwards to node ports, which forward to the ClusterIP rules, which pick a pod.</p></div>
+  <div class="quiz"><p class="q">You have 12 HTTP microservices to expose publicly. Best approach?</p><div class="opts">
+    <button class="opt">12 LoadBalancer Services</button><button class="opt" data-correct>12 ClusterIP Services behind one Ingress (or Gateway)</button><button class="opt">12 NodePorts</button></div>
+    <p class="why">One entry point, path or host routing, TLS in one place, and one public IP to pay for and secure.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>Exposing a database with LoadBalancer</b><span>It puts your database on the public internet. Keep it ClusterIP; use port-forward to reach it yourself.</span></div>
+  <div class="slip"><b>EXTERNAL-IP stuck on pending in a local cluster</b><span>kind and minikube have no cloud controller. Use <code>minikube tunnel</code> or port-forward locally; on AKS it resolves in a minute or two.</span></div>
+</section>
+
+<!-- ================= 8 CONFIG ================= -->
+<section class="lesson" id="l8" data-title="Config, secrets, namespaces" data-level="Intermediate">
+  <p class="kicker">Lesson 8 · Intermediate</p>
+  <h1>Configuration, secrets and namespaces</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>The same image should run in dev and prod with different database URLs and API keys. Baking those into the image means one image per environment and secrets in your registry. And with several teams on one cluster, everything ends up in one crowded list.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>Your Flutter app reads <code>--dart-define</code> values or a .env file at build time so the same code can point at staging or production. Kubernetes does the same, but at <em>run</em> time: the image stays identical; the settings are handed in when the pod starts.</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How it works</h3>
+  <ul class="plain">
+    <li><strong>ConfigMap</strong>: non-secret key-value settings, injected as environment variables or mounted as files.</li>
+    <li><strong>Secret</strong>: same shape, for passwords and keys. By default values are only <strong>base64-encoded</strong>, not encrypted, so access control matters. On AKS, the usual production pattern is Azure Key Vault mounted through the Secrets Store CSI driver.</li>
+    <li><strong>Namespace</strong>: a named folder inside the cluster (<code>dev</code>, <code>team-payments</code>). Names only need to be unique within a namespace, and you can attach access rules and resource quotas per namespace. <code>kube-system</code> holds cluster components; don't put apps there.</li>
+  </ul>
+
+  <h3 class="stage" data-s="try"><span class="dot"></span>Try it</h3>
+  <div class="code"><pre>kubectl create namespace dev
+kubectl -n dev create configmap api-config --from-literal=LOG_LEVEL=debug
+kubectl -n dev create secret generic api-secrets --from-literal=DB_PASSWORD='s3cret'
+kubectl -n dev get secret api-secrets -o yaml   <span class="cmt"># see: just base64</span></pre></div>
+  <div class="code"><p class="cap">Using them in the Deployment's container spec</p><pre>        <span class="key">envFrom:</span>
+        - <span class="key">configMapRef:</span> { <span class="key">name:</span> api-config }
+        - <span class="key">secretRef:</span>    { <span class="key">name:</span> api-secrets }</pre></div>
+  <p>Changing a ConfigMap doesn't restart pods that read it as environment variables. Run <code>kubectl rollout restart deployment/hello-api</code> to pick up new values.</p>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">Is a Kubernetes Secret encrypted by default?</p><div class="opts">
+    <button class="opt">Yes, with AES</button><button class="opt" data-correct>No, it's base64-encoded; protection comes from access control and optional encryption at rest</button></div>
+    <p class="why">Anyone who can read Secrets in that namespace can decode them in one command. Treat RBAC on Secrets as the real lock.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>Committing secret YAML to git</b><span>Base64 isn't hiding anything. Use Key Vault, sealed secrets, or create them from CI.</span></div>
+  <div class="slip"><b>Forgetting <code>-n</code></b><span>"My pods vanished" usually means you're looking in the default namespace.</span></div>
+</section>
+
+<!-- ================= 9 AKS ================= -->
+<section class="lesson" id="l9" data-title="AKS: Kubernetes on Azure" data-level="Intermediate → Good">
+  <p class="kicker">Lesson 9 · Intermediate → Good</p>
+  <h1>AKS: what Azure runs for you, and what you still own</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>Running the control plane yourself means keeping etcd backed up and highly available, patching the API server, rotating certificates, and upgrading every component in the right order. It's a full-time job that doesn't ship any features.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>Renting a fully serviced office vs building one. With AKS, Azure runs the building (power, security desk, lifts: the control plane). You still choose how many desks to rent, who sits where and what work happens there (nodes, workloads, access).</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>How it works</h3>
+  <h4>Who manages what</h4>
+  <div class="tbl"><table>
+    <tr><th>Azure manages</th><th>You manage</th></tr>
+    <tr><td>Control plane: kube-apiserver, etcd, scheduler, controller-manager, cloud-controller-manager. You can't log into it; you reach it through the API.</td><td>Your workloads: Deployments, Services, config, probes, resource requests.</td></tr>
+    <tr><td>Control plane availability and patching; upgrades are triggered through <code>az</code> or the portal.</td><td>Choosing node VM sizes, node counts, autoscaling, and when to upgrade.</td></tr>
+    <tr><td>Node OS images (you apply updates or enable auto-upgrade).</td><td>Access control, network policies, cost.</td></tr>
+  </table></div>
+  <p>Billing follows that split: you pay for the node VMs (and disks, load balancers, IPs). The control plane is free on the Free tier; paid tiers add an uptime SLA.</p>
+
+  <h4>Concepts specific to AKS</h4>
+  <ul class="plain">
+    <li><strong>Nodes are Azure VMs</strong>, grouped into <strong>node pools</strong> (VM Scale Sets) that share a VM size and OS. A <strong>system node pool</strong> runs critical add-ons like CoreDNS; <strong>user node pools</strong> run your apps. You can add a GPU pool for ML work alongside a cheap general pool.</li>
+    <li><strong>Cluster autoscaler</strong> adds nodes when pods can't be scheduled and removes idle ones. The <strong>Horizontal Pod Autoscaler</strong> adds pods based on CPU or other metrics. They work together: more pods → no room → more nodes.</li>
+    <li><strong>AKS Automatic vs Standard.</strong> Automatic presets node management, scaling and many production defaults. Standard gives you full control over node pools, networking and scaling.</li>
+    <li><strong>Networking plugin</strong> (Azure CNI, commonly in Overlay mode) decides how pod IPs relate to your Azure virtual network. It matters when pods must talk to other Azure resources by private IP.</li>
+  </ul>
+  <h4>How Kubernetes objects map to Azure resources</h4>
+  <div class="tbl"><table>
+    <tr><th>You create</th><th>Azure creates</th></tr>
+    <tr><td>Service <code>type: LoadBalancer</code></td><td>A rule and public IP on the cluster's Azure Load Balancer</td></tr>
+    <tr><td>PersistentVolumeClaim</td><td>An Azure Disk or Azure Files share</td></tr>
+    <tr><td>Image reference <code>myacr.azurecr.io/...</code></td><td>Pull from Azure Container Registry, authorised by attaching ACR to the cluster</td></tr>
+    <tr><td>Node pool</td><td>A VM Scale Set in a separate "node resource group" (MC_...)</td></tr>
+    <tr><td>Login with <code>kubectl</code></td><td>Optionally Microsoft Entra ID identities with Kubernetes or Azure RBAC</td></tr>
+  </table></div>
+
+  <h3 class="stage" data-s="try"><span class="dot"></span>Try it: create a small cluster</h3>
+  <div class="code"><pre>az login
+az group create --name rg-k8s-learn --location centralindia
+az acr create --resource-group rg-k8s-learn --name &lt;uniqueacrname&gt; --sku Basic
+az aks create \
+  --resource-group rg-k8s-learn \
+  --name aks-learn \
+  --node-count 2 \
+  --attach-acr &lt;uniqueacrname&gt; \
+  --generate-ssh-keys
+az aks get-credentials --resource-group rg-k8s-learn --name aks-learn
+kubectl get nodes                    <span class="cmt"># two Azure VMs, Ready</span>
+az aks nodepool list --resource-group rg-k8s-learn --cluster-name aks-learn -o table</pre></div>
+  <p><code>get-credentials</code> writes the cluster's address and your credentials into <code>~/.kube/config</code>. From that point, every <code>kubectl</code> command from lessons 4 to 8 works unchanged against AKS. That portability is the point.</p>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">In AKS, can you SSH into the etcd server to take a backup?</p><div class="opts">
+    <button class="opt">Yes, from the node resource group</button><button class="opt" data-correct>No, the control plane is managed and not directly accessible</button></div>
+    <p class="why">Azure runs and protects the control plane. Backups of your workloads are done at the Kubernetes level (for example, with a backup tool or by keeping manifests in git).</p></div>
+  <div class="quiz"><p class="q">Pods are Pending because nodes are full, and cluster autoscaler is enabled. What happens?</p><div class="opts">
+    <button class="opt" data-correct>AKS adds a node to the pool (up to its max), then the scheduler places the pods</button>
+    <button class="opt">The HPA deletes other pods to make room</button>
+    <button class="opt">Nothing; you must resize the VMs</button></div>
+    <p class="why">Cluster autoscaler reacts to unschedulable pods by growing the node pool within its min/max limits.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>Forgetting to delete the learning cluster</b><span>Two VMs running all month is a real bill. <code>az group delete --name rg-k8s-learn --yes --no-wait</code> removes everything in one go.</span></div>
+  <div class="slip"><b>Running apps on the system pool</b><span>A noisy app can starve CoreDNS and break the whole cluster's name resolution. Add a user pool.</span></div>
+  <div class="slip"><b>Editing resources in the MC_ resource group by hand</b><span>AKS manages those. Change things through <code>az aks</code> or Kubernetes, or they'll be reverted or break upgrades.</span></div>
+  <p class="muted">Docs: learn.microsoft.com/azure/aks/core-aks-concepts and /concepts-clusters-workloads</p>
+</section>
+
+<!-- ================= 10 LAB ================= -->
+<section class="lesson" id="l10" data-title="End-to-end lab" data-level="Good">
+  <p class="kicker">Lesson 10 · Good</p>
+  <h1>Lab: ship hello-api to AKS, end to end</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>Knowing each piece isn't the same as wiring them together. This lab connects lessons 1 to 9 in the order you'd do it at work. Run it locally first (kind or minikube) if you want to avoid Azure costs; only steps 2 and 7 change.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="chain"><span class="hop">Dockerfile</span><span class="arrow">→</span><span class="hop">image in ACR</span><span class="arrow">→</span><span class="hop svc">Deployment (3 pods)</span><span class="arrow">→</span><span class="hop svc">ClusterIP Service</span><span class="arrow">→</span><span class="hop ext">LoadBalancer / Ingress</span><span class="arrow">→</span><span class="hop ext">your phone</span></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>Steps</h3>
+  <h4>1. Build the image</h4>
+  <div class="code"><pre>docker build -t hello-api:1.0 .</pre></div>
+  <h4>2. Push to ACR</h4>
+  <div class="code"><pre>az acr login --name &lt;uniqueacrname&gt;
+docker tag hello-api:1.0 &lt;uniqueacrname&gt;.azurecr.io/hello-api:1.0
+docker push &lt;uniqueacrname&gt;.azurecr.io/hello-api:1.0
+<span class="cmt"># Apple Silicon Mac? build for the nodes' CPU: docker build --platform linux/amd64 ...</span>
+<span class="cmt"># local kind instead: kind load docker-image hello-api:1.0</span></pre></div>
+  <h4>3. Deploy</h4>
+  <p>Use <code>deployment.yaml</code> from lesson 5 with the image changed to <code>&lt;uniqueacrname&gt;.azurecr.io/hello-api:1.0</code>, and <code>service.yaml</code> from lesson 6.</p>
+  <div class="code"><pre>kubectl apply -f deployment.yaml -f service.yaml
+kubectl get pods -l app=hello-api -w        <span class="cmt"># wait for 3/3 Running, Ctrl+C</span></pre></div>
+  <h4>4. Prove ClusterIP load-spreading</h4>
+  <div class="code"><pre>kubectl run tmp --rm -it --image=busybox --restart=Never -- \
+  sh -c 'for i in 1 2 3 4 5 6; do wget -qO- http://hello-api; echo; done'
+<span class="cmt"># served_by shows different pod names</span></pre></div>
+  <h4>5. Break it on purpose</h4>
+  <div class="code"><pre>kubectl delete pod -l app=hello-api --wait=false
+kubectl get pods -l app=hello-api -w        <span class="cmt"># watch 3 new pods appear</span></pre></div>
+  <h4>6. Roll out v1.1 and roll back</h4>
+  <div class="code"><pre><span class="cmt"># change the msg in main.py, then build, tag and push as :1.1</span>
+kubectl set image deployment/hello-api api=&lt;uniqueacrname&gt;.azurecr.io/hello-api:1.1
+kubectl rollout status deployment/hello-api
+kubectl rollout undo deployment/hello-api</pre></div>
+  <h4>7. Expose publicly</h4>
+  <div class="code"><pre>kubectl patch svc hello-api -p '{"spec":{"type":"LoadBalancer"}}'
+kubectl get svc hello-api -w                <span class="cmt"># EXTERNAL-IP goes from &lt;pending&gt; to an IP</span>
+curl http://&lt;EXTERNAL-IP&gt;/</pre></div>
+  <h4>8. Autoscale</h4>
+  <div class="code"><pre>kubectl autoscale deployment hello-api --cpu-percent=60 --min=3 --max=10
+kubectl get hpa</pre></div>
+  <h4>9. Clean up</h4>
+  <div class="code"><pre>az group delete --name rg-k8s-learn --yes --no-wait</pre></div>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Check yourself</h3>
+  <div class="quiz"><p class="q">Pods show <code>ImagePullBackOff</code> right after step 3 on AKS. First two things to check?</p><div class="opts">
+    <button class="opt" data-correct>The exact image name and tag, and whether ACR is attached to the cluster</button>
+    <button class="opt">The Service selector and targetPort</button>
+    <button class="opt">The node's CPU usage</button></div>
+    <p class="why"><code>kubectl describe pod</code> shows the pull error. It's almost always a typo, a tag you didn't push, or missing registry permission (<code>az aks update --attach-acr</code>).</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where people slip</h3>
+  <div class="slip"><b>Pushing an arm64 image from an M-series Mac</b><span>AKS nodes are usually amd64; the pod fails with "exec format error". Build with <code>--platform linux/amd64</code>.</span></div>
+  <div class="slip"><b>Patching the Service type and forgetting the YAML</b><span>Update <code>service.yaml</code> too, or the next apply reverts it to ClusterIP.</span></div>
+</section>
+
+<!-- ================= 11 DEBUG ================= -->
+<section class="lesson" id="l11" data-title="Debugging playbook & final check" data-level="Good">
+  <p class="kicker">Lesson 11 · Good</p>
+  <h1>Debugging playbook, and a final check</h1>
+  <ul class="flow"></ul>
+
+  <h3 class="stage" data-s="problem"><span class="dot"></span>The problem</h3>
+  <p>In real work and interviews, the skill that separates "has read about Kubernetes" from "can run it" is calm, ordered debugging. Every status message points at a specific part of the system you now know.</p>
+
+  <h3 class="stage" data-s="picture"><span class="dot"></span>Picture it</h3>
+  <div class="picture"><p>Follow the request's journey and ask, at each hop, "did this step happen?": was the pod scheduled, did the image pull, did the process start, is it Ready, does the Service see it, does outside traffic reach the Service. The first "no" is your bug.</p></div>
+
+  <h3 class="stage" data-s="how"><span class="dot"></span>Symptom → cause → command</h3>
+  <div class="tbl"><table>
+    <tr><th>You see</th><th>It usually means</th><th>Look with</th></tr>
+    <tr><td><code>Pending</code></td><td>Scheduler can't place it: not enough requested CPU/memory free, node selector or taint mismatch, unbound volume</td><td><code>kubectl describe pod</code> → Events</td></tr>
+    <tr><td><code>ImagePullBackOff</code></td><td>Wrong image/tag, or no permission to the registry</td><td><code>describe pod</code>; check ACR attach</td></tr>
+    <tr><td><code>CrashLoopBackOff</code></td><td>The app starts and exits: bad config, missing env var, crash on boot, failing liveness probe</td><td><code>kubectl logs &lt;pod&gt; --previous</code></td></tr>
+    <tr><td><code>OOMKilled</code></td><td>Exceeded memory limit</td><td><code>describe pod</code> → Last State; raise limit or fix leak</td></tr>
+    <tr><td><code>Running</code> but <code>0/1 READY</code></td><td>Readiness probe failing: wrong path/port, app not listening yet</td><td><code>describe pod</code> → probe events</td></tr>
+    <tr><td>Service returns nothing</td><td>No endpoints (label mismatch, nothing Ready) or wrong targetPort</td><td><code>kubectl get endpointslices</code>, <code>--show-labels</code></td></tr>
+    <tr><td><code>EXTERNAL-IP &lt;pending&gt;</code></td><td>No cloud controller (local cluster), or Azure still provisioning / quota</td><td><code>kubectl describe svc</code> → Events</td></tr>
+  </table></div>
+  <div class="code"><p class="cap">The order to run things in</p><pre>kubectl get pods -o wide                  <span class="cmt"># 1. what state, which node</span>
+kubectl describe pod &lt;pod&gt;                <span class="cmt"># 2. events at the bottom tell the story</span>
+kubectl logs &lt;pod&gt; [--previous]           <span class="cmt"># 3. what the app said before dying</span>
+kubectl get endpointslices                <span class="cmt"># 4. does the Service see Ready pods</span>
+kubectl get events --sort-by=.lastTimestamp   <span class="cmt"># 5. cluster-wide timeline</span></pre></div>
+
+  <h3 class="stage" data-s="check"><span class="dot"></span>Final check: mixed questions</h3>
+  <div class="quiz"><p class="q">A pod is in CrashLoopBackOff. <code>kubectl logs</code> is empty. What next?</p><div class="opts">
+    <button class="opt" data-correct><code>kubectl logs --previous</code> to see the last crashed run's output</button>
+    <button class="opt">Delete the Deployment and recreate it</button>
+    <button class="opt">Switch the Service to LoadBalancer</button></div>
+    <p class="why">The current container may have just restarted and logged nothing yet; <code>--previous</code> shows why the last one died.</p></div>
+  <div class="quiz"><p class="q">Which is true about a LoadBalancer Service on AKS?</p><div class="opts">
+    <button class="opt">It replaces the ClusterIP</button><button class="opt" data-correct>It still has a ClusterIP and NodePort underneath, plus an Azure Load Balancer IP</button><button class="opt">It requires an Ingress controller</button></div>
+    <p class="why">The layered model from lesson 7.</p></div>
+  <div class="quiz"><p class="q">Which component writes cluster state to etcd?</p><div class="opts">
+    <button class="opt">kubelet</button><button class="opt">kube-scheduler</button><button class="opt" data-correct>kube-apiserver</button></div>
+    <p class="why">Only the API server touches etcd. Everything else reads and writes through it.</p></div>
+  <div class="quiz"><p class="q">A pod is Running but missing from the Service's endpoints. Labels match. Why?</p><div class="opts">
+    <button class="opt" data-correct>Its readiness probe is failing, so it isn't Ready</button>
+    <button class="opt">kube-proxy is down on that node</button>
+    <button class="opt">The Service is ClusterIP</button></div>
+    <p class="why">EndpointSlices only list Ready pods as serving. Fix the probe or the app's startup.</p></div>
+  <div class="quiz"><p class="q">What do you pay Azure for in an AKS Free-tier cluster?</p><div class="opts">
+    <button class="opt">The control plane per hour</button><button class="opt" data-correct>The node VMs and attached resources like disks, load balancers and IPs</button><button class="opt">Each pod</button></div>
+    <p class="why">The managed control plane is free on the Free tier; nodes and networking resources are billed.</p></div>
+
+  <h3 class="stage" data-s="slip"><span class="dot"></span>Where to go next</h3>
+  <ul class="plain">
+    <li><strong>StatefulSets and PersistentVolumes</strong> for databases and anything with stable identity or storage.</li>
+    <li><strong>Ingress controllers / Gateway API</strong> with TLS via cert-manager.</li>
+    <li><strong>Helm</strong> for packaging, then <strong>GitOps</strong> (Flux or Argo CD) so git drives the cluster.</li>
+    <li><strong>RBAC and NetworkPolicies</strong> to control who can do what, and which pods can talk.</li>
+    <li>Practice: the official interactive tutorials at kubernetes.io/docs/tutorials, and Microsoft Learn's AKS modules. If you aim for certification, CKAD fits a developer path.</li>
+  </ul>
+</section>
+
+<div class="foot" id="foot">
+  <button class="btn alt" id="prevBtn">Previous</button>
+  <button class="btn doneBtn" id="doneBtn" aria-pressed="false">Mark lesson complete</button>
+  <button class="btn" id="nextBtn">Next lesson</button>
+</div>
+</main>
+</div>
+
+<script>
+(function(){
+  const lessons=[...document.querySelectorAll('.lesson')];
+  const ids=lessons.map(l=>l.id);
+  const KEY='k8s-course-progress';
+  let done={};
+  try{done=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){done={}}
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(done))}catch(e){}};
+
+  /* theme */
+  const root=document.documentElement;
+  try{const t=localStorage.getItem('k8s-theme');if(t)root.dataset.theme=t}catch(e){}
+  document.getElementById('themeBtn').onclick=()=>{
+    const dark=root.dataset.theme?root.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme=dark?'light':'dark';
+    try{localStorage.setItem('k8s-theme',root.dataset.theme)}catch(e){}
+  };
+
+  /* flow strips */
+  const stages=[['problem','The problem','var(--bad)'],['picture','Picture it','var(--cargo)'],['how','How it works','var(--helm)'],['try','Try it','var(--buoy)'],['check','Check yourself','var(--ok)'],['slip','Where people slip','var(--muted)']];
+  document.querySelectorAll('.flow').forEach(f=>{f.innerHTML=stages.map(s=>`<li><i style="background:${s[2]}"></i>${s[1]}</li>`).join('')});
+
+  /* nav */
+  const map=document.getElementById('map');
+  function buildNav(){
+    const groups=[['Start',[0]],['Foundations',[1,2,3,4]],['Running and connecting apps',[5,6,7,8]],['Azure and practice',[9,10,11]]];
+    map.innerHTML=groups.map(([g,idx])=>`<h2>${g}</h2><ol>`+idx.map(i=>{const l=lessons[i];return `<li><a href="#${l.id}" data-id="${l.id}" class="${done[l.id]?'done':''}"><span class="num">${done[l.id]?'✓':(i===0?'·':i)}</span><span>${l.dataset.title}<span class="lvl">${l.dataset.level}</span></span></a></li>`}).join('')+'</ol>').join('');
+    const route=document.getElementById('route');
+    route.innerHTML=lessons.slice(1).map((l,i)=>`<li class="${done[l.id]?'done':''}"><a href="#${l.id}"><span class="n">${i+1}</span>${l.dataset.title}</a></li>`).join('');
+    const n=ids.slice(1).filter(id=>done[id]).length;
+    document.getElementById('meter').innerHTML=`<b>${n}</b> of ${ids.length-1} lessons done`;
+  }
+  const mt=document.getElementById('mapToggle');
+  mt.onclick=()=>{const o=map.classList.toggle('open');mt.setAttribute('aria-expanded',o)};
+
+  function show(){
+    let id=location.hash.slice(1);
+    if(!ids.includes(id))id='l0';
+    lessons.forEach(l=>l.classList.toggle('on',l.id===id));
+    map.querySelectorAll('a').forEach(a=>a.setAttribute('aria-current',a.dataset.id===id));
+    const i=ids.indexOf(id);
+    document.getElementById('prevBtn').style.visibility=i>0?'visible':'hidden';
+    const nb=document.getElementById('nextBtn');
+    nb.style.visibility=i<ids.length-1?'visible':'hidden';
+    nb.textContent=i===0?'Start lesson 1':'Next lesson';
+    const db=document.getElementById('doneBtn');
+    db.style.display=i===0?'none':'';
+    db.setAttribute('aria-pressed',!!done[id]);
+    db.textContent=done[id]?'Completed ✓':'Mark lesson complete';
+    map.classList.remove('open');mt.setAttribute('aria-expanded','false');
+    window.scrollTo(0,0);
+  }
+  const cur=()=>ids.indexOf(location.hash.slice(1))<0?0:ids.indexOf(location.hash.slice(1));
+  document.getElementById('prevBtn').onclick=()=>{location.hash=ids[Math.max(0,cur()-1)]};
+  document.getElementById('nextBtn').onclick=()=>{location.hash=ids[Math.min(ids.length-1,cur()+1)]};
+  document.getElementById('doneBtn').onclick=()=>{const id=ids[cur()];done[id]=!done[id];save();buildNav();show()};
+  window.addEventListener('hashchange',show);
+
+  /* quizzes */
+  document.querySelectorAll('.quiz').forEach(q=>{
+    const why=q.querySelector('.why');
+    q.querySelectorAll('.opt').forEach(b=>b.addEventListener('click',()=>{
+      if(q.classList.contains('answered'))return;
+      q.classList.add('answered');
+      const ok=b.hasAttribute('data-correct');
+      b.classList.add(ok?'right':'wrong');
+      q.querySelector('[data-correct]').classList.add('right');
+      q.querySelectorAll('.opt').forEach(x=>x.disabled=true);
+      why.insertAdjacentHTML('afterbegin',`<span class="verdict" style="color:${ok?'var(--ok)':'var(--bad)'}">${ok?'Right. ':'Not quite. '}</span>`);
+    }));
+  });
+
+  /* copy buttons */
+  document.querySelectorAll('.code').forEach(c=>{
+    const pre=c.querySelector('pre');if(!pre||c.closest('#typeSim'))return;
+    const b=document.createElement('button');b.className='copy';b.textContent='Copy';
+    if(!c.querySelector('.cap'))b.style.top='8px';
+    b.onclick=async()=>{try{await navigator.clipboard.writeText(pre.innerText);b.textContent='Copied'}catch(e){b.textContent='Select & copy'}setTimeout(()=>b.textContent='Copy',1500)};
+    c.appendChild(b);
+  });
+
+  /* helpers */
+  const rnd=n=>Math.floor(Math.random()*n);
+  const suffix=()=>{const c='bcdfghjklmnpqrstvwxz2456789';let s='';for(let i=0;i<5;i++)s+=c[rnd(c.length)];return s};
+  const ip=()=>`10.244.${rnd(3)}.${10+rnd(240)}`;
+  const time=()=>new Date().toTimeString().slice(0,8);
+  function logTo(el,msg){const d=document.createElement('div');d.textContent=`${time()}  ${msg}`;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+
+  /* anatomy stepper */
+  const steps=[
+    [['kubectl','api'],'<b>1. kubectl → API server.</b> kubectl sends your Deployment YAML over HTTPS. The API server checks who you are (authentication), whether you may do this (authorization), and runs admission checks.'],
+    [['api','etcd'],'<b>2. Stored in etcd.</b> The API server saves the Deployment object. Nothing is running yet; Kubernetes has only recorded what you want.'],
+    [['cm','api'],'<b>3. Controllers react.</b> The Deployment controller sees a new Deployment and creates a ReplicaSet. The ReplicaSet controller sees it wants 3 pods and creates 3 Pod objects, with no node assigned yet.'],
+    [['sched','api'],'<b>4. Scheduler assigns nodes.</b> It sees 3 unscheduled pods, checks each node\'s free CPU and memory against the pods\' requests, and writes a node name onto each pod: two on node 1, one on node 2.'],
+    [['kubelet','runtime','podA','podB','podC'],'<b>5. Kubelets start containers.</b> Each node\'s kubelet sees pods assigned to it, asks containerd to pull the image and start the containers, then runs the probes.'],
+    [['kubelet','api','etcd'],'<b>6. Status flows back.</b> Kubelets report pod status (IP, Running, Ready) to the API server, which stores it. This is what <code>kubectl get pods</code> shows you.'],
+    [['proxy','api'],'<b>7. Networking updates.</b> If a Service selects these pods, their IPs are added to its EndpointSlice and kube-proxy on every node updates its rules so traffic can reach them. If the app used a LoadBalancer Service, the cloud-controller-manager would also talk to Azure here.']
+  ];
+  let si=0;
+  const anat=document.getElementById('anatSim');
+  function drawAnat(){
+    anat.querySelectorAll('.comp').forEach(c=>c.classList.toggle('lit',steps[si][0].includes(c.dataset.c)));
+    document.getElementById('anatCap').innerHTML=steps[si][1];
+    document.getElementById('anatCount').textContent=`${si+1} / ${steps.length}`;
+    document.getElementById('anatPrev').disabled=si===0;
+    document.getElementById('anatNext').textContent=si===steps.length-1?'Start over':'Next step';
+  }
+  document.getElementById('anatNext').onclick=()=>{si=si===steps.length-1?0:si+1;drawAnat()};
+  document.getElementById('anatPrev').onclick=()=>{si=Math.max(0,si-1);drawAnat()};
+  drawAnat();
+
+  /* self-healing sim */
+  const rs='hello-api-7d9f8c';
+  let pods=[];let desired=3;
+  const hp=document.getElementById('healPods'),hl=document.getElementById('healLog');
+  function newPod(){const p={name:`${rs}-${suffix()}`,ip:ip(),node:`node-${1+rnd(2)}`,st:'creating'};pods.push(p);logTo(hl,`ReplicaSet ${rs}: created pod ${p.name}`);setTimeout(()=>{if(p.st==='creating'){p.st='running';logTo(hl,`kubelet ${p.node}: ${p.name} Running, IP ${p.ip}`);drawHeal()}},1100);}
+  function killPod(p,why){if(p.st==='term')return;p.st='term';logTo(hl,why||`pod ${p.name} deleted`);drawHeal();setTimeout(()=>{pods=pods.filter(x=>x!==p);drawHeal()},700);}
+  function reconcile(){
+    const live=pods.filter(p=>p.st!=='term');
+    if(live.length<desired){logTo(hl,`controller: want ${desired}, have ${live.length}, creating ${desired-live.length}`);for(let i=live.length;i<desired;i++)newPod();drawHeal()}
+    else if(live.length>desired){logTo(hl,`controller: want ${desired}, have ${live.length}, removing ${live.length-desired}`);live.slice(desired).forEach(p=>killPod(p,`ReplicaSet ${rs}: deleted pod ${p.name} (scale down)`))}
+  }
+  function drawHeal(){
+    hp.innerHTML='';
+    pods.forEach(p=>{const d=document.createElement('div');d.className='pod'+(p.st==='creating'?' creating':p.st==='term'?' term':'');
+      d.innerHTML=`<div class="nm">${p.name}</div><div class="st">${p.st==='creating'?'ContainerCreating':p.st==='term'?'Terminating':'Running'}</div><div class="muted">${p.st==='running'?p.ip:'IP pending'} · ${p.node}</div>`;
+      if(p.st!=='term'){const b=document.createElement('button');b.textContent='Delete pod';b.onclick=()=>killPod(p);d.appendChild(b)}
+      hp.appendChild(d)});
+  }
+  const rep=document.getElementById('replicas');
+  rep.oninput=()=>{desired=+rep.value;document.getElementById('repVal').textContent=desired;logTo(hl,`you: kubectl scale --replicas=${desired}`)};
+  document.getElementById('killRandom').onclick=()=>{const live=pods.filter(p=>p.st==='running');if(!live.length)return;const node=live[rnd(live.length)].node;logTo(hl,`${node}: became NotReady, its pods are lost`);live.filter(p=>p.node===node).forEach(p=>killPod(p,`pod ${p.name} on ${node} lost`))};
+  for(let i=0;i<3;i++){const p={name:`${rs}-${suffix()}`,ip:ip(),node:`node-${1+(i%2)}`,st:'running'};pods.push(p)}
+  logTo(hl,'Deployment hello-api applied with replicas: 3');
+  drawHeal();setInterval(reconcile,900);
+
+  /* service routing sim */
+  const sp=[{n:'hello-api-7d9f8c-k2x9p',ip:'10.244.0.17',lab:true,ready:true},{n:'hello-api-7d9f8c-qw7rt',ip:'10.244.1.42',lab:true,ready:true},{n:'hello-api-7d9f8c-zm4hb',ip:'10.244.2.8',lab:true,ready:false}];
+  const svcPods=document.getElementById('svcPods'),svcLog=document.getElementById('svcLog'),epEl=document.getElementById('epList');
+  const eps=()=>sp.filter(p=>p.lab&&p.ready);
+  function drawSvc(){
+    svcPods.innerHTML='';
+    sp.forEach((p,i)=>{const d=document.createElement('div');const isEp=p.lab&&p.ready;d.className='pod'+(isEp?'':' out');d.id='sp'+i;
+      d.innerHTML=`<div class="nm">${p.n}</div><div class="muted">${p.ip}:8000</div>
+      <label><input type="checkbox" ${p.lab?'checked':''} data-k="lab" data-i="${i}"> label app=hello-api</label>
+      <label><input type="checkbox" ${p.ready?'checked':''} data-k="ready" data-i="${i}"> readiness passing</label>`;
+      svcPods.appendChild(d)});
+    svcPods.querySelectorAll('input').forEach(c=>c.onchange=()=>{sp[c.dataset.i][c.dataset.k]=c.checked;logTo(svcLog,`EndpointSlice updated: ${eps().length} ready endpoint(s)`);drawSvc()});
+    const e=eps();
+    epEl.innerHTML=e.length?`<b>Endpoints right now:</b> ${e.map(p=>p.ip+':8000').join(', ')}`:`<b>Endpoints right now:</b> none. Requests to this Service will fail.`;
+  }
+  function send(){
+    const e=eps();
+    if(!e.length){logTo(svcLog,'frontend → hello-api:80 … failed: Service has no ready endpoints');return}
+    const p=e[rnd(e.length)];const i=sp.indexOf(p);
+    logTo(svcLog,`frontend → hello-api:80 (10.0.142.7) → ${p.ip}:8000  served_by ${p.n}`);
+    const el=document.getElementById('sp'+i);if(el){el.classList.add('hit');setTimeout(()=>el.classList.remove('hit'),450)}
+  }
+  document.getElementById('sendReq').onclick=send;
+  document.getElementById('send10').onclick=()=>{let k=0;const t=setInterval(()=>{send();if(++k>=10)clearInterval(t)},180)};
+  drawSvc();
+
+  /* service types */
+  const T={
+    cip:{chain:[['in','Another pod in the cluster'],['svc','hello-api:80 (ClusterIP 10.0.142.7)'],['','kube-proxy rules'],['ext','pod :8000']],
+      cap:'Only reachable from inside the cluster. The default, and the right choice for most Services.',
+      yaml:'spec:\n  type: ClusterIP\n  selector: { app: hello-api }\n  ports:\n  - port: 80\n    targetPort: 8000'},
+    np:{chain:[['in','Something that can reach a node IP'],['svc','any NodeIP:30080'],['svc','ClusterIP :80'],['ext','pod :8000']],
+      cap:'Every node opens port 30080, even nodes not running the pod. On AKS, nodes normally have no public IP, so this is mainly for testing or for a load balancer you manage yourself.',
+      yaml:'spec:\n  type: NodePort\n  selector: { app: hello-api }\n  ports:\n  - port: 80\n    targetPort: 8000\n    nodePort: 30080   # 30000-32767, or leave out to auto-assign'},
+    lb:{chain:[['ext','Internet client'],['svc','Azure Load Balancer, public IP :80'],['svc','NodeIP:3xxxx'],['svc','ClusterIP :80'],['ext','pod :8000']],
+      cap:'Azure provisions a public IP on the cluster\'s load balancer and forwards to the node ports. Simple, but every LoadBalancer Service is another public IP to pay for and secure.',
+      yaml:'spec:\n  type: LoadBalancer\n  selector: { app: hello-api }\n  ports:\n  - port: 80\n    targetPort: 8000\n# internal-only on AKS: add annotation\n# service.beta.kubernetes.io/azure-load-balancer-internal: "true"'},
+    ing:{chain:[['ext','Internet client'],['svc','one Azure LB IP'],['svc','Ingress controller pods'],['','/api → hello-api, /auth → auth-svc'],['svc','ClusterIP Services'],['ext','pods']],
+      cap:'One public entry point for many HTTP services. The ingress controller (for example NGINX, or AKS\'s application routing add-on) reads Ingress rules and routes by host and path. Your app Services stay ClusterIP.',
+      yaml:'apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata: { name: web }\nspec:\n  ingressClassName: nginx\n  rules:\n  - host: api.example.com\n    http:\n      paths:\n      - path: /\n        pathType: Prefix\n        backend:\n          service: { name: hello-api, port: { number: 80 } }'}
+  };
+  const typeSim=document.getElementById('typeSim');
+  function drawType(k){
+    typeSim.querySelectorAll('[data-t]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.t===k));
+    document.getElementById('typeChain').innerHTML=T[k].chain.map((h,i)=>(i?'<span class="arrow">→</span>':'')+`<span class="hop ${h[0]}">${h[1]}</span>`).join('');
+    document.getElementById('typeCap').textContent=T[k].cap;
+    document.getElementById('typeYaml').textContent=T[k].yaml;
+  }
+  typeSim.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>drawType(b.dataset.t));
+  drawType('cip');
+
+  buildNav();show();
+})();
+</script>
+</body>
+</html>

@@ -12,6 +12,6 @@ Start with [00-start-here.md](00-start-here.md): it maps every JD point and scre
 | [04-theory-answers.md](04-theory-answers.md) | Spoken answers to the recruiter's questions, weak-area deep dives, client question bank |
 | [05-indexing-deep-dive.md](05-indexing-deep-dive.md) | Database indexing from zero, with a self-quiz |
 | [06-fastapi-rapid-fire.md](06-fastapi-rapid-fire.md) | Every FastAPI concept with trade-offs: middleware order, auth placement, CORS, cookies, WebSockets, pagination |
-| [07-mock-interview-log.md](07-mock-interview-log.md) | Mock round: every question, score and model answer |
+| [07-mock-interview-log.md](07-mock-interview-log.md) | 30 mock questions: your answers, simple corrected answers, and new likely questions |
 | [code/solutions.cpp](code/solutions.cpp) | DSA solutions with asserts: `g++ -std=c++17 -O2 solutions.cpp -o sol && ./sol` |
 | [code/fastapi_demo.py](code/fastapi_demo.py) | One-file multi-tenant API demo with tests: `pip install fastapi httpx pyjwt && python3 fastapi_demo.py` |

@@ -27,7 +27,7 @@ Two kinds of material live here, and it helps to know which you're reading:
 | [`flutter/`](flutter) | Rendering internals, layout, rebuilds, common bugs, interview Qs · `mobile-app/` (build/release, deep links, speech) · `api-monitor/` (a package) · `dartpad-snippets/` | Reference + project |
 | [`dsa/`](dsa) | LeetCode cheatsheets (C++/Java/Dart) + Amazon SDE last-minute | Reference |
 | [`fundamentals/`](fundamentals) | Git (workflow guide + cheatsheet) · OOP concepts | Reference |
-| [`interview-prep/`](interview-prep) | Company/role survival guides (Visa, Amazon) + general technical-interview theory | Prep |
+| [`interview-prep/`](interview-prep) | Company/role survival guides (Visa, Amazon, `headstart-python/`: Python backend client round with mock log) + general technical-interview theory | Prep |
 | [`labs/`](labs) | Runnable hands-on labs — `scaling-lab/` (FastAPI + Postgres + Prometheus/Grafana + k6: find bottlenecks by measuring) | Lab |
 | [`personal/`](personal) | Self-intro + roadmap/calendar/planning docs | Personal |
 

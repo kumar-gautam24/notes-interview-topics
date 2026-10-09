@@ -88,7 +88,7 @@
 > 2. **Requests were waiting for a database connection.** The pool was capped at 10 per service. Adding pods would have made it *worse*, because each pod opens its own connections and the database has a limit.
 > 3. **OTP emails took 8–10 seconds.** The email was sent *during* the request. I moved it to a background job, and it dropped to about half a second."
 
-[fill: is 1 million registered users or monthly active?]
+Confirmed: over 1 million users.
 
 ---
 

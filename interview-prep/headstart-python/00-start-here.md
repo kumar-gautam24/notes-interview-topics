@@ -12,7 +12,8 @@
 | 06 | [06-fastapi-rapid-fire.md](06-fastapi-rapid-fire.md) | Every FastAPI concept: glossary, middleware order, auth placement, DB sessions, errors, CORS, cookies/HTTPS, WebSockets, jobs, pagination, optimisation, trade-offs, structure |
 | 07 | [07-mock-interview-log.md](07-mock-interview-log.md) | 30 mock questions: your answers, simple corrected answers, and new likely questions |
 | 08 | [08-design-patterns.md](08-design-patterns.md) | Design patterns for a Python backend: simple idea, your real use, tested code, follow-ups, SOLID |
-| 09 | [09-self-intro.md](09-self-intro.md) | Your self-introduction in 30s / 90s / 2min versions, plus why backend, why Headstart, strengths |
+| 09 | [09-self-intro.md](09-self-intro.md) | Three self-intros (backend, SDE, Flutter), each in 30s / 90s / 2min, with follow-up answers |
+| 10 | [10-project-questions.md](10-project-questions.md) | Questions your own projects will trigger (wallet, webhooks, workers, auth bugs, ABDM, gateway, multi-tenant) with follow-ups |
 | code | [solutions.cpp](code/solutions.cpp) | All DSA solutions with asserts: `g++ -std=c++17 -O2 solutions.cpp -o sol && ./sol` |
 | code | [fastapi_demo.py](code/fastapi_demo.py) | One-file multi-tenant CRM API showing every FastAPI pattern; `python3 fastapi_demo.py` runs its tests |
 | code | [design_patterns.py](code/design_patterns.py) | 14 patterns in one file with tests: `python3 design_patterns.py` |

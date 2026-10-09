@@ -32,9 +32,8 @@ Read this once so every project is fresh. Each row says **what it is**, **your s
 | Sept 2023 – Aug 2024 | MithilaStack (intern) | Sole engineer on EduDoor |
 | Feb 2025 – Oct 2025 | Ailoitte Technologies | Client apps: **Guardian Bubble** (major), MyCard, Nile Source, Kailado, Golden Bridge |
 | Oct 2025 – present | Ailoitte, contracted to **Fractal Analytics** | **Vaidya AI** (major) and Vaidya Insurance: Flutter app + FastAPI backend |
-| Alongside | Own / freelance | Recurring (App Store), Manpower Management (UAE client), Stac open source, Flittz, Revilo, MedCompass, Flutter web |
-
-[fill: confirm where Flittz, Revilo, MedCompass and the Flutter web app fit in time: college, internship, Ailoitte or freelance]
+| Alongside | Own / freelance | Recurring (App Store), Manpower Management (UAE client), Stac open source, Flittz, Revilo, MedCompass |
+| 2024 | Smart India Hackathon | Disaster management system (Flutter web + Firebase) |
 
 ## 1.2 Backend work
 
@@ -83,11 +82,11 @@ Read this once so every project is fresh. Each row says **what it is**, **your s
 - Android PoC: **VPN + accessibility service** reading on-screen text to detect adult content.
 - **Modernised the inherited code:** moved off deprecated APIs to Clean Architecture, added Husky hooks and **unit tests that caught a parsing bug before release** that would have broken location history. RevenueCat subscriptions.
 
-**Other apps** [fill: one line each with your role and one number or hard problem]
-- **Flittz:** Flutter app, **10K+ downloads**. [fill: what it is, what you built]
-- **Revilo:** [fill]
-- **MedCompass:** Flutter **Windows desktop** app. [fill: what it does; any desktop-specific challenge like packaging, file system, window management]
-- **Flutter web app:** [fill: which one, what it did]
+**Other apps**
+- **Revilo:** mechanic-booking app. You built the **web routing**, **live GPS tracking** and **most of the core business logic** (booking flow and its rules). *Best of the smaller apps for a backend or SDE interview, because it's logic-heavy.*
+- **Flittz:** party game app on **iOS and Android**, **10K+ downloads**. You built **localization** and **payments**.
+- **SIH 2024 disaster management system:** **Flutter web + Firebase**. Shows **nearby rescue centres and warehouses** and sends **alerts**. *Your Flutter web work.*
+- **MedCompass:** offline medical app (Flutter Windows). You did only a little here, so **don't put it in an intro**. If asked: "I made small contributions; my main work was Vaidya and Guardian Bubble."
 - **EduDoor (MithilaStack):** sole engineer from Figma to Play Store; auth, role-based flows, search, REST, push notifications; designed the architecture and mentored juniors.
 
 **Open source**
@@ -101,7 +100,7 @@ Read this once so every project is fresh. Each row says **what it is**, **your s
 
 ## 1.4 Foundations
 - **CodeChef rank 32 of 5,000+** (2022), **Google Kickstart** (2021), **GATE CS** (2023).
-- **Hackathons:** **Manthan 2021**, **Smart India Hackathon 2022 (finalist)**, **Smart India Hackathon 2024**. [fill: what you built at SIH 2022 and results for Manthan and SIH 2024]
+- **Hackathons:** **Manthan 2021**, **Smart India Hackathon 2022 (finalist)**, **Smart India Hackathon 2024** (built a disaster management system in Flutter web + Firebase: nearby rescue centres, warehouses, alerts).
 
 ---
 
@@ -115,7 +114,7 @@ Lead with the server. Mobile appears once, as the reason you design good APIs.
 > "Hi, I'm Gautam, a software engineer at Ailoitte Technologies with about two years of experience. I work on **Vaidya AI**, a healthcare platform we build for Fractal Analytics, where I own the **auth, admin and billing services** in **FastAPI, PostgreSQL and Redis**. I built the credit wallet and payment webhooks so money stays correct under concurrency and retries, and the job flow that runs multi-minute work on Redis workers and streams progress over SSE. I started on mobile and moved into backend ownership, and that's where I'm going deeper."
 
 ### A · 90 seconds (default)
-> "Hi, I'm Gautam. I'm a software engineer at **Ailoitte Technologies** in Bangalore, and I work on **Vaidya AI**, a healthcare platform we build for **Fractal Analytics**. I started on the mobile app and **took over backend ownership** as the product grew. Today I own the **auth, admin and billing services** in FastAPI and PostgreSQL, including the token format every other service validates.
+> "Hi, I'm Gautam. I'm a software engineer at **Ailoitte Technologies** in Bangalore, and I work on **Vaidya AI**, a healthcare platform with **over 1 million users** that we build for **Fractal Analytics**. I started on the mobile app and **took over backend ownership** as the product grew. Today I own the **auth, admin and billing services** in FastAPI and PostgreSQL, including the token format every other service validates.
 >
 > Three things I'm proud of there:
 >
@@ -156,7 +155,7 @@ Lead with the server. Mobile appears once, as the reason you design good APIs.
 > "The phone can be offline, so every write must be safe to replay. The client generates the UUID, so a retried create returns 200 instead of creating a duplicate. Updates carry `updated_at`; if the server row is newer, it returns 409 with the current row and the client resolves it. Deletes are tombstones so other devices learn about them. A sequence-number feed lets a device ask 'what changed since 1042?' and catch up. The trade-off is last-write-wins: two offline edits to the same field, the later one wins."
 
 **"What's the biggest scale you've handled?"**
-> "Vaidya, with [fill: one user number]. Honestly, our hardest problems weren't user count but speed: a blocking driver in async code, a slow email call in login, and connection limits as pods scale. Adding pods also multiplies database connections, so pool size had to be planned against Postgres' limit."
+> "Vaidya, with over 1 million users. Honestly, our hardest problems weren't user count but speed: a blocking driver in async code, a slow email call in login, and connection limits as pods scale. Adding pods also multiplies database connections, so pool size had to be planned against Postgres' limit."
 
 **"The multi-tenant project is in Go. Why, for a Python role?"**
 > "The client project started in Go and I kept it there. My day job and my personal backend, Recurring, are Python and FastAPI, and that's where I'm going deeper. The design carries over: tenant from the token, every query scoped, roles inside a tenant, background jobs."
@@ -184,7 +183,7 @@ Lead with **range, ownership and problem solving**: production apps on both mobi
 ### B · 90 seconds (default)
 > "Hi, I'm Gautam, a software engineer at **Ailoitte Technologies**. I work **across the stack**, and my two major projects are **Vaidya AI** and **Guardian Bubble**.
 >
-> On **Vaidya AI**, a healthcare platform for **Fractal Analytics**:
+> On **Vaidya AI**, a healthcare platform for **Fractal Analytics** with **over 1 million users**:
 > - On the **backend**, I own the **auth, admin and billing services** in FastAPI and PostgreSQL. The credit wallet can't be overspent under concurrency, webhooks are idempotent, and a reconciliation job catches missed payments.
 > - On the **app**, I own the architecture, built a **background health-data sync** for iOS and Android, and cut cold start from **3.5 seconds to under 1**.
 >
@@ -227,7 +226,7 @@ Lead with **range, ownership and problem solving**: production apps on both mobi
 > "I was strong in college: CodeChef rank 32. Working full-time I practised less, so I'm rebuilding with regular LeetCode in C++. I always start with brute force, then optimise out loud and state the complexity." [fill: what you've actually practised recently]
 
 **"What do hackathons show about you?"**
-> "Building something that works, under a deadline, with a team, and cutting scope to what matters. At SIH 2022 we reached the finals with [fill: one line on the problem and what you built]."
+> "Building something that works, under a deadline, with a team, and cutting scope to what matters. At SIH 2022 we reached the finals. At SIH 2024 I built a disaster management system in Flutter web and Firebase: it showed the nearest rescue centres and supply warehouses and sent alerts."
 
 **"Where do you see yourself in 2–3 years?"**
 > "Owning a backend system end to end at a product company: designing it, running it in production, and being the person called when it breaks."
@@ -246,11 +245,11 @@ Lead with **architecture, performance and platform depth**. Backend becomes your
 >
 > My two major projects:
 >
-> **Vaidya AI**, a healthcare app for **Fractal Analytics**, live on both stores. I **own the app's architecture**: Clean Architecture, BLoC, secure storage and sync managers. I set up the **base project template** the team now uses on new Flutter projects. I built **health-data sync** from HealthKit and Health Connect, over **10,000 entries per user** processed in **isolates**, including **background sync** on both platforms. I cut **cold start from 3.5 seconds to under 1** and **app size by 35%**, and hardened security with **SSL pinning, jailbreak detection and encrypted storage**.
+> **Vaidya AI**, a healthcare app for **Fractal Analytics** with **over 1 million users**, live on both stores. I **own the app's architecture**: Clean Architecture, BLoC, secure storage and sync managers. I set up the **base project template** the team now uses on new Flutter projects. I built **health-data sync** from HealthKit and Health Connect, over **10,000 entries per user** processed in **isolates**, including **background sync** on both platforms. I cut **cold start from 3.5 seconds to under 1** and **app size by 35%**, and hardened security with **SSL pinning, jailbreak detection and encrypted storage**.
 >
 > **Guardian Bubble**, a parental-control app I inherited. I built **SOS that fires even when the app is killed**, with **critical alerts that bypass Do Not Disturb**, and **live location** over sockets with smooth routes using **Douglas-Peucker and KDE smoothing**. I also modernised the codebase with Clean Architecture and **unit tests that caught a bug before release**.
 >
-> I've shipped other Flutter apps too: **Flittz** with **10K+ downloads**, **Revilo**, a **Windows desktop app**, MedCompass, and a Flutter web app. And my PR to the open-source **Stac** framework was merged.
+> I've shipped other apps too: **Revilo**, a mechanic-booking app where I built **web routing, live GPS tracking and the core booking logic**, and **Flittz**, a party game with **10K+ downloads**, where I did **localization and payments**. And my PR to the open-source **Stac** framework was merged.
 >
 > Because I also work on the backend, I design what the app needs from the API instead of working around it. I'm looking for a role where I own a large app's architecture and performance."
 
@@ -261,7 +260,7 @@ Lead with **architecture, performance and platform depth**. Backend becomes your
 >
 > Since October 2025 I've been on **Vaidya AI** for **Fractal Analytics**. I own the architecture and built the **base template** other projects adopted. The hardest part was **background health sync**: iOS wakes the app when data arrives, Android runs on a WorkManager schedule, and both call **one shared Dart sync engine**. Records have fixed ids so retries are harmless, and only the foreground moves the sync cursor. We validated it with a **week-long multi-user field test**. I also cut cold start by **71%**, app size by **35%**, and fixed an **iOS white screen** with zero repro steps.
 >
-> Along the way I've shipped **Flittz**, **10K+ downloads**, **Revilo**, **MedCompass** on **Windows desktop**, and a **Flutter web** app, and contributed to **Stac**. I also build backends in FastAPI, including the backend for my own App Store app, **Recurring**.
+> Along the way I built **Revilo**, a mechanic-booking app (routing, live GPS and the core booking logic), **Flittz**, a party game with **10K+ downloads** (localization and payments), and at **SIH 2024** a **disaster management system in Flutter web and Firebase**. I've also contributed to **Stac**. I also build backends in FastAPI, including the backend for my own App Store app, **Recurring**.
 >
 > I'm looking for a role where I own a large app's architecture and performance end to end."
 
@@ -291,7 +290,11 @@ Lead with **architecture, performance and platform depth**. Backend becomes your
 **"Isolates: when do you use them?"**
 > "For CPU-heavy work that would block the UI for more than a frame: parsing large JSON, processing thousands of health entries, syncing 1,000+ contacts. Not for network calls; those are already async and don't block."
 
-**"What was different about the Windows app?"** [fill: e.g. desktop packaging, window sizing, file system access, plugins without Windows support]
+**"Tell me about Revilo."**
+> "It's a mechanic-booking app. I built the web routing, live GPS tracking of the mechanic, and most of the business logic: the booking flow and the rules around it [fill: e.g. assignment, status changes, cancellation]."
+
+**"How did you do localization and payments in Flittz?"**
+> [fill: the localization approach, e.g. ARB files with `flutter_localizations` and `intl`, and the payment provider, e.g. in-app purchases or RevenueCat.] Keep it to two sentences.
 
 **"Why do you also do backend?"**
 > "Many app problems are really API problems. Knowing the backend lets me ask for the right API: pagination, idempotent retries on bad networks, backward compatibility for old app versions. On Recurring I built both sides, and the offline sync only works because I designed the client and server together."
@@ -301,7 +304,7 @@ Lead with **architecture, performance and platform depth**. Backend becomes your
 # Part 3 · Follow-ups for every track
 
 **"Gap between August 2024 and February 2025?"**
-> [fill: the honest reason in one sentence.] "I joined Ailoitte in February 2025." Don't apologise or over-explain.
+> Rarely asked for a gap this short. If it comes up, give one honest sentence, say "then I joined Ailoitte in February 2025", and move on. Don't apologise or over-explain.
 
 **"Why are you looking for a change?"** (positive, never criticise Ailoitte)
 > "I've grown a lot at Ailoitte, from client apps to owning major parts of a large product on both mobile and backend. Now I want a product company where I stay on one platform long term and go deeper on [backend and data at scale / app architecture at scale]." [fill: your real reason]
@@ -335,4 +338,4 @@ Lead with **architecture, performance and platform depth**. Backend becomes your
 ## Delivery checklist
 - Say the 90-second version of your track out loud **three times**, timing it. If it runs over 100 seconds, cut a sentence; don't speed up.
 - Know which **three items** you'd most like them to ask about, and make sure each appears in your intro.
-- Fill every **[fill]** above before the interview, especially the user count, hackathon results, the gap, and one line each for Flittz, Revilo, MedCompass and the web app.
+- Fill the remaining **[fill]** spots before the interview: reason for change, notice period, a failure story, a disagreement story, and the Revilo and Flittz details.

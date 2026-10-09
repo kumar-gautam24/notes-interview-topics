@@ -10,9 +10,12 @@
 | 04 | [04-theory-answers.md](04-theory-answers.md) | Spoken answers to the recruiter's Q1–Q16, deep dives on your weak areas, the client's question bank |
 | 05 | [05-indexing-deep-dive.md](05-indexing-deep-dive.md) | Indexing from zero: B-trees, composite indexes, index types, when not to index, EXPLAIN, spoken answer, self-quiz |
 | 06 | [06-fastapi-rapid-fire.md](06-fastapi-rapid-fire.md) | Every FastAPI concept: glossary, middleware order, auth placement, DB sessions, errors, CORS, cookies/HTTPS, WebSockets, jobs, pagination, optimisation, trade-offs, structure |
-| 07 | [07-mock-interview-log.md](07-mock-interview-log.md) | Every mock question with your score and the model answer to rehearse |
+| 07 | [07-mock-interview-log.md](07-mock-interview-log.md) | 30 mock questions: your answers, simple corrected answers, and new likely questions |
+| 08 | [08-design-patterns.md](08-design-patterns.md) | Design patterns for a Python backend: simple idea, your real use, tested code, follow-ups, SOLID |
+| 09 | [09-self-intro.md](09-self-intro.md) | Your self-introduction in 30s / 90s / 2min versions, plus why backend, why Headstart, strengths |
 | code | [solutions.cpp](code/solutions.cpp) | All DSA solutions with asserts: `g++ -std=c++17 -O2 solutions.cpp -o sol && ./sol` |
 | code | [fastapi_demo.py](code/fastapi_demo.py) | One-file multi-tenant CRM API showing every FastAPI pattern; `python3 fastapi_demo.py` runs its tests |
+| code | [design_patterns.py](code/design_patterns.py) | 14 patterns in one file with tests: `python3 design_patterns.py` |
 
 ## What the client is actually testing
 Headstart sells a **CRM to education institutions**: many colleges (tenants), lots of leads/students, bulk email/SMS campaigns, enrolment reports. The JD and question bank both point at the same thing: *can you build and scale a multi-tenant API that handles bulk data and background work safely?*

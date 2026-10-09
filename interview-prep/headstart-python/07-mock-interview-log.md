@@ -574,31 +574,59 @@ for batch in read_in_batches("students.csv"):
 
 ---
 
-## Q22 · "What are Django signals?"
+## Q22 · "What are Django signals?" (Django: you haven't used it, so open honestly)
 
-**Think of signals like a doorbell:** when something happens (a student is saved), any code that "listens" for the bell runs automatically.
+**Open with this, every time a Django question comes:**
+> "I haven't worked with Django. My production work is FastAPI. But I know the concept, and here's how I solve the same problem in FastAPI."
+
+That's honest, and it moves the conversation onto ground where you're strong. They asked earlier candidates Django questions, so have the concept ready, but always bridge to FastAPI.
+
+**Think of signals like a doorbell:** when something happens (a student is saved), any code listening for the bell runs automatically. It's the **Observer pattern** ([08-design-patterns.md P10](08-design-patterns.md)).
 
 **Say this:**
-> "Signals let code react to events without being called directly. For example, `post_save` runs after a model is saved, and `pre_delete` runs before something is deleted. You connect a function with `@receiver(post_save, sender=Student)`.
-> Good uses: creating a profile when a user signs up, clearing a cache, writing an audit log.
-> **Watch out:**
-> - they run **in the same request**, so a slow one slows the request
-> - they **don't fire on bulk updates** (`queryset.update()`, `bulk_create`)
-> - they hide logic, so bugs are harder to trace
-> For things like sending emails, I'd use `transaction.on_commit` to queue a task only after the save actually succeeds."
+> "I haven't used Django, but signals are its built-in Observer pattern: `post_save` runs after a model is saved, `pre_delete` before a delete, and you connect a function with `@receiver`. They're used for things like creating a profile on sign-up or clearing a cache.
+> The known downsides: they run in the same request, so a slow one slows the request; they don't fire on bulk updates; and they hide logic.
+> **In FastAPI, I get the same result explicitly:** the service publishes an event like `lead.created`, and listeners handle the audit log and welcome email. Anything slow goes onto a **background queue**, and only after the database commit succeeds, so we never email someone about a save that rolled back."
 
-[Honest note: "My production work is FastAPI rather than Django, but I know the concept."]
+**Django → FastAPI map** (to bridge any Django question):
+
+| Django | What you use in FastAPI |
+|---|---|
+| Signals | Explicit service calls, an event bus, or a queue task after commit |
+| Django ORM, `select_related` | SQLAlchemy `joinedload`, or raw SQL with JOIN (asyncpg, your way) |
+| Django REST Framework serializers | Pydantic models + `response_model` |
+| Middleware | Starlette middleware (`@app.middleware`, `add_middleware`) |
+| Django Channels | FastAPI's built-in WebSockets + Redis pub/sub |
+| Celery with Django | Same Celery, or arq / RQ / your own Redis workers |
+| Django admin | No built-in admin. You build admin APIs (you own the Vaidya admin service) |
+| `manage.py migrate` | Alembic, or hand-written SQL migrations (your Recurring setup) |
 
 ---
 
-## Q23 · "WebSockets vs Django Channels: what's the difference?"
+## Q23 · "WebSockets vs Django Channels: what's the difference?" (answer from the FastAPI side)
 
-**Think of it like this:** a **WebSocket** is the phone line (the technology). **Django Channels** is the switchboard that lets Django use phone lines (the library).
+**Think of it like this:** a **WebSocket** is the phone line (the technology). **Django Channels** is Django's switchboard for phone lines (a library). FastAPI has the switchboard built in.
 
 **Say this:**
-> "A **WebSocket** is a connection that stays open, so the server and the browser can both send messages any time. It starts as a normal HTTP request that gets 'upgraded'.
-> **Django Channels** is a library that lets Django handle WebSockets, because normal Django only does one request → one response. Channels adds **consumers** (like views for a connection), routing for socket URLs, and a **channel layer** backed by **Redis**, so a message can reach users connected to *different* servers. For example, broadcast 'seat booked' to everyone watching one event.
-> In FastAPI, WebSockets are built in, and I'd use **Redis pub/sub** for the same broadcasting job. For server → client updates only, like progress, I use **SSE**, which is simpler. I used that for the Vaidya pipeline progress."
+> "A **WebSocket** is a connection that stays open, so the server and the browser can both send messages at any time. It starts as a normal HTTP request that gets upgraded, with a '101 Switching Protocols' response.
+> I haven't used Django, but **Django Channels** is the library that adds WebSockets to Django, because plain Django only does one request, one response. It uses a Redis 'channel layer' so a message can reach users connected to different servers.
+> **In FastAPI, WebSockets are built in:** `@app.websocket("/ws")`, then `accept`, `receive` and `send`. For broadcasting to users on different servers, like 'seat booked' to everyone watching an event, I'd use **Redis pub/sub**, which is the same job Channels' layer does. And when updates only go server → client, like progress, I use **SSE**, which is simpler. I used SSE for the Vaidya pipeline progress."
+
+```python
+from fastapi import WebSocket, WebSocketDisconnect
+
+@app.websocket("/ws/events/{event_id}")
+async def seat_updates(ws: WebSocket, event_id: int):
+    await ws.accept()
+    await manager.join(event_id, ws)            # manager forwards Redis pub/sub messages
+    try:
+        while True:
+            await ws.receive_text()             # keep the connection alive
+    except WebSocketDisconnect:
+        manager.leave(event_id, ws)
+```
+
+**If they ask about auth on sockets:** browsers can't send an Authorization header on a WebSocket, so use an HttpOnly cookie (and check the `Origin` header), or a short-lived ticket in the URL. Details in [06-fastapi-rapid-fire.md section P](06-fastapi-rapid-fire.md).
 
 ---
 

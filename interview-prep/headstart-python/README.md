@@ -13,5 +13,8 @@ Start with [00-start-here.md](00-start-here.md): it maps every JD point and scre
 | [05-indexing-deep-dive.md](05-indexing-deep-dive.md) | Database indexing from zero, with a self-quiz |
 | [06-fastapi-rapid-fire.md](06-fastapi-rapid-fire.md) | Every FastAPI concept with trade-offs: middleware order, auth placement, CORS, cookies, WebSockets, pagination |
 | [07-mock-interview-log.md](07-mock-interview-log.md) | 30 mock questions: your answers, simple corrected answers, and new likely questions |
+| [08-design-patterns.md](08-design-patterns.md) | Design patterns for a Python backend with your real examples, tested code and follow-ups |
+| [09-self-intro.md](09-self-intro.md) | Self-introduction in 30s / 90s / 2min versions, plus common follow-ups |
 | [code/solutions.cpp](code/solutions.cpp) | DSA solutions with asserts: `g++ -std=c++17 -O2 solutions.cpp -o sol && ./sol` |
 | [code/fastapi_demo.py](code/fastapi_demo.py) | One-file multi-tenant API demo with tests: `pip install fastapi httpx pyjwt && python3 fastapi_demo.py` |
+| [code/design_patterns.py](code/design_patterns.py) | 14 design patterns with tests: `python3 design_patterns.py` |

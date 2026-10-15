@@ -28,6 +28,35 @@ def allow(user_id):
     q.append(now)
     return True
 ```
+**If they hand you tuples** `(user_id, request_time_in_seconds)`: same logic, in a loop.
+```python
+from collections import deque
+
+def rate_limit(requests, limit=3, window=10):
+    hits = {}                                  # user_id -> deque of allowed request times
+    result = []
+    for user_id, t in requests:                # each request is a tuple (user_id, time_in_seconds)
+        if user_id not in hits:                # (defaultdict(deque) does these 2 lines for you)
+            hits[user_id] = deque()
+        q = hits[user_id]
+        while q and q[0] <= t - window:        # forget requests older than 10 s
+            q.popleft()
+        if len(q) < limit:
+            q.append(t)
+            result.append((user_id, t, "ALLOW"))
+        else:
+            result.append((user_id, t, "BLOCK"))
+    return result
+
+rate_limit([("u1",1), ("u1",2), ("u1",3), ("u1",4), ("u2",4), ("u1",11), ("u1",12)])
+# u1@1 ALLOW, u1@2 ALLOW, u1@3 ALLOW, u1@4 BLOCK, u2@4 ALLOW, u1@11 ALLOW, u1@12 ALLOW
+```
+- **Logic:** for each request, (1) take this user's recent times, (2) drop the ones older than 10 s, (3) if 3 remain, block; otherwise record and allow. At t=11 the request from t=1 has left the window, so it's allowed.
+- **deque:** a list that's fast at both ends. Times arrive in order, so the oldest is at the front and `popleft()` removes it in O(1). `list.pop(0)` is O(n) because it shifts everything.
+- **defaultdict(deque):** a dict that creates an empty deque the first time a new user appears, instead of raising KeyError. It's the same as the two `if user_id not in hits` lines, just shorter.
+- **One deque per user:** limits are per user, so u2 never counts against u1.
+- **Complexity:** each time is added once and removed once, so O(n) total. At most 3 timestamps are stored per user.
+
 *If they push ("many servers?"):* the same idea in Redis, with one sorted set per user, so all servers share it. See Part 3.
 
 ### Cache: user with 5 s TTL

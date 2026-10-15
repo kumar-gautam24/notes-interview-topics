@@ -126,7 +126,7 @@ while True:                                    # worker side
     _, job_id = r.brpop("jobs")                # waits until a job arrives
     process(job_id.decode())
 ```
-*If they push ("worker crashes mid-job?"):* move the job to a `processing` list and remove it only after success, plus retries. See Part 5. Mention RabbitMQ only if asked.
+*If they push ("worker crashes mid-job?"):* move the job to a `processing` list and remove it only after success, plus retries. Part 5 explains it step by step. Mention RabbitMQ only if asked.
 
 ### CSV: 5 users × 10 lakh rows
 > "I don't process it inside the request. **One:** save the file to storage, create a job, put the job id on a queue, and return the job id right away. **Two:** a worker reads the file **5,000 rows at a time**, inserts each batch in one query, and saves progress. **Three:** the user checks progress with the job id. If the worker crashes, it continues from the saved progress."
@@ -156,6 +156,7 @@ All code is in [code/round2/](code/round2/) and every file runs its own tests:
 |---|---|---|
 | [rate_limiter.py](code/round2/rate_limiter.py) | 3 requests / 10 s per user: deque, tuple list, Redis sorted set, Redis counter | `python3 rate_limiter.py` |
 | [redis_cache.py](code/round2/redis_cache.py) | Get user with 5 s TTL: miss, hit, invalidate on update, expiry | `python3 redis_cache.py` |
+| [redis_queue_simple.py](code/round2/redis_queue_simple.py) | The simple queue first: LPUSH + BRPOP (Level 1), then BLMOVE + LREM so a crash doesn't lose the job (Level 2) | `python3 redis_queue_simple.py` |
 | [redis_queue.py](code/round2/redis_queue.py) | Redis list as a queue: producer, workers, ack, retry, dead-letter, crash recovery. RabbitMQ version for comparison | `python3 redis_queue.py` |
 | [csv_import.py](code/round2/csv_import.py) | 5 users × 10 lakh rows: upload → queue → worker reads chunks with a generator → batch insert → progress → resume after crash | `python3 csv_import.py 1000000` |
 | [razorpay_webhook.py](code/round2/razorpay_webhook.py) | Signature check, duplicate event, fake-then-real, out-of-order, rollback, Idempotency-Key | `python3 razorpay_webhook.py` |
@@ -398,6 +399,159 @@ return user
 ---
 
 # Part 5 · Redis as a queue vs RabbitMQ (hands-on)
+
+## Step by step (learn this part first)
+
+Code for this part: [redis_queue_simple.py](code/round2/redis_queue_simple.py) (Level 1 and Level 2, with tests). Run it with `python3 redis_queue_simple.py`.
+
+### 1. Why a queue at all?
+
+Think of a restaurant. The waiter takes your order, writes a ticket, puts it on the kitchen rail and comes back to you. The waiter does not stand in the kitchen cooking your food while other customers wait.
+
+- **API = waiter.** It writes a ticket (the job id) and replies right away (`202 Accepted`).
+- **Queue = the ticket rail.** Tickets wait there in order.
+- **Worker = cook.** A separate process takes the next ticket and does the slow work.
+
+What this gets you:
+1. **The API stays fast.** A 10-lakh-row CSV doesn't hold the HTTP request open.
+2. **Spikes are absorbed.** If 500 jobs arrive at once, they wait in the queue instead of crashing the server.
+3. **You can scale the slow part alone.** Need more speed? Start more workers. The API doesn't change.
+4. **Failures can be retried.** If the work fails, the job can go back on the queue.
+
+**Say it in one line:** "A queue separates *accepting* work from *doing* work, so the API stays fast and workers do the slow part at their own pace."
+
+### 2. A Redis list is the queue
+
+A Redis list is just an ordered list with two ends. Two commands:
+- `LPUSH jobs X` adds X to the **left** end.
+- `RPOP jobs` takes from the **right** end.
+
+Push on the left, take from the right, and the oldest item is always taken first. That's **first in, first out (FIFO)**.
+
+| Step | Command | List `jobs` (left ... right) |
+|---|---|---|
+| 1 | `LPUSH jobs job1` | `[job1]` |
+| 2 | `LPUSH jobs job2` | `[job2, job1]` |
+| 3 | `LPUSH jobs job3` | `[job3, job2, job1]` |
+| 4 | `RPOP jobs` → `job1` | `[job3, job2]` |
+| 5 | `RPOP jobs` → `job2` | `[job3]` |
+
+`RPUSH` + `LPOP` works the same way, just mirrored. Pick one pair and stick to it.
+
+### 3. Producer (the API side): one line
+
+```python
+r = redis.Redis(decode_responses=True)   # get str back instead of bytes
+
+def enqueue(job_id):
+    r.lpush("jobs", job_id)
+```
+
+- `r.lpush("jobs", job_id)`: adds the job id to the left of the list named `jobs`. If the list doesn't exist, Redis creates it. It returns immediately.
+- **What goes in the queue?** Only the **job id**, not the file or the 10 lakh rows. The details live in the `import_jobs` table (Part 1). The message stays tiny, and the database stays the source of truth.
+
+### 4. Worker (the consumer side)
+
+```python
+while True:
+    _queue_name, job_id = r.brpop("jobs")   # waits until a job arrives
+    process(job_id)
+```
+
+Line by line:
+- `while True:` A worker is a separate program that runs forever, one job after another.
+- `r.brpop("jobs")`: **B**locking **R**ight **POP**. It takes from the right end. **If the list is empty, it waits** (the connection just sits there) until something is pushed, then returns at once.
+- It returns a **tuple**: `("jobs", "job1")`, meaning which list it came from and the value. That's why we unpack two things. (`brpop` can watch several lists at once, so it tells you which one.)
+- `process(job_id)`: do the real work, such as reading the CSV or sending the email.
+
+**Why `BRPOP` and not `RPOP` in a loop?** `RPOP` on an empty list returns `None` immediately. You'd either spin in a loop hitting Redis thousands of times a second (wasted CPU), or add `sleep(1)`, and then a job waits up to 1 s for no reason. `BRPOP` waits *inside Redis* and wakes up the moment a job arrives.
+
+**Timeout:** `r.brpop("jobs", timeout=5)` waits at most 5 s and returns `None` if nothing came. That's useful so the loop can check "should I shut down?" Timeout `0` means wait forever.
+
+### 5. Walk-through: 3 jobs, 2 workers
+
+| Time | What happens | `jobs` list |
+|---|---|---|
+| t0 | Worker A and Worker B both call `BRPOP` and wait | `[]` |
+| t1 | API: `LPUSH jobs job1` | `[job1]` → A gets `job1` instantly → `[]` |
+| t2 | API pushes `job2` and `job3` | `[job3, job2]` → B gets `job2` → `[job3]` |
+| t3 | A finishes `job1`, calls `BRPOP` again, gets `job3` | `[]` |
+
+**Can two workers get the same job?** No. Every Redis command runs one at a time (Redis is single-threaded), so a pop is atomic: one item goes to exactly one worker.
+
+**Want more speed?** Start more workers. They all `BRPOP` the same list and share the work.
+
+### 6. The problem: worker crashes mid-job
+
+```
+BRPOP -> job1 is REMOVED from Redis -> worker starts processing -> worker crashes
+```
+Now `job1` exists nowhere: not in the queue, not finished. **The job is lost.**
+
+### 7. The fix: don't delete until it's done (Level 2)
+
+Idea: instead of *taking the ticket off the rail*, **move it to a "being cooked" rail**. Remove it only when the dish is served.
+
+```python
+while True:
+    job_id = r.blmove("jobs", "jobs:processing", 0, "RIGHT", "LEFT")
+    process(job_id)
+    r.lrem("jobs:processing", 1, job_id)    # done -> remove ("ack")
+```
+
+- `BLMOVE jobs jobs:processing RIGHT LEFT`: take from the right of `jobs` and push to the left of `jobs:processing`, **as one atomic step**. It also blocks while empty, like BRPOP. (Older Redis calls it `BRPOPLPUSH`.)
+- `LREM jobs:processing 1 job_id`: remove one copy of `job_id` from the processing list. This is the **ack** ("acknowledged, done").
+- **If the worker crashes** between those two lines, `job_id` is still in `jobs:processing`. A small recovery step (on worker startup, or every few minutes) moves stuck jobs back to `jobs`:
+
+```python
+while r.lmove("jobs:processing", "jobs", "RIGHT", "RIGHT"):
+    pass
+```
+
+| Step | `jobs` | `jobs:processing` |
+|---|---|---|
+| `LPUSH jobs job1` | `[job1]` | `[]` |
+| Worker `BLMOVE` | `[]` | `[job1]` |
+| Worker crashes | `[]` | `[job1]` ← still safe |
+| Recovery moves it back | `[job1]` | `[]` |
+| New worker `BLMOVE`, processes, `LREM` | `[]` | `[]` ✓ |
+
+**Say it in one line:** "BRPOP deletes the job before the work is done, so a crash loses it. I use BLMOVE to move it to a processing list and remove it only after success. Anything left in processing after a crash gets put back."
+
+### 8. Retries and dead-letter (only if they push)
+
+Some jobs fail even without a crash, for example when an email provider is down. Store an attempt count with the job:
+
+```python
+job = {"job_id": "abc", "attempts": 0}
+try:
+    process(job)
+except Exception:
+    job["attempts"] += 1
+    if job["attempts"] < 3:
+        r.lpush("jobs", json.dumps(job))        # try again later
+    else:
+        r.lpush("jobs:dead", json.dumps(job))   # give up, a human looks at it
+```
+
+- **Dead-letter list** = jobs that failed 3 times. You don't retry them forever (that blocks other work), and you don't throw them away. Someone checks them, fixes the cause, and re-queues them.
+- Full version with backoff: [redis_queue.py](code/round2/redis_queue.py).
+
+### 9. Follow-ups they may ask
+
+- **"Can a job run twice?"** Yes. If the worker finishes the work but crashes just before `LREM`, recovery puts it back and it runs again. That's called **at-least-once** delivery. So the job must be **idempotent**, meaning running it twice gives the same result. Examples: `ON CONFLICT DO NOTHING` on inserts, or checking `status = 'done'` in the jobs table before starting.
+- **"What if Redis itself restarts?"** Redis is in memory. Turn on persistence (AOF), and keep the **jobs table in Postgres as the source of truth**. A sweeper re-queues any job still `queued` or `processing` for too long. Even if Redis loses the list, nothing is lost for good.
+- **"How do you see a backlog?"** `LLEN jobs` gives the queue length. Alert if it keeps growing, then add workers.
+- **"Priority jobs?"** Use two lists: `r.brpop(["jobs:high", "jobs:low"])`. BRPOP checks the lists in the order given, so high always goes first.
+- **"Run a job later (in 10 minutes)?"** A list can't do that. Use a **sorted set** with the run time as the score: `ZADD delayed <run_at> job_id`. A small loop moves due jobs (`ZRANGEBYSCORE delayed 0 now`) into `jobs`.
+- **"Is order guaranteed?"** The queue hands jobs out in order. With 2+ workers they *finish* in any order, because a big job can take longer. If order matters per user, use one queue per user or one worker per key.
+- **"Why not RabbitMQ?"** "Redis was already in my stack and my jobs were simple, so a list was enough. If I needed delivery guarantees built in (ack, redelivery on crash, dead-letter, routing to different consumers), I'd use RabbitMQ instead of building them myself."
+- **"Why not Kafka?"** Kafka is a log for event *streams*, built for very high volume and for many consumers reading the same events. It's too much for a background job queue.
+- **"Why not just Celery?"** Celery is a Python library that does all of this for you (retries, schedules) using Redis or RabbitMQ underneath. In a real project I'd likely use it, or RQ/ARQ. Writing it by hand here shows I understand what it does inside.
+
+---
+
+## Full version (one level deeper)
 
 **Say this:**
 > "A Redis **list** is a queue. The producer `LPUSH`es a job, the worker `BRPOP`s it: that's first in, first out, and BRPOP blocks until a job arrives, so there's no busy polling. The catch: if the worker crashes after popping, the job is lost. So I use `BLMOVE` to atomically move the job to a `processing` list, and remove it only after success (that's my **ack**). Failed jobs are retried a few times, then moved to a **dead-letter** list. A reaper moves jobs stuck in `processing` back to the queue."

@@ -523,6 +523,30 @@ FastAPIRedis(app).lifespan().caching().rate_limiting()   # connect Redis on star
 
 **Eviction group = a label for keys that belong together** ("all user entries"). Later you can wipe the whole group at once. The `{users}` braces keep all of them on the same Redis Cluster node, so a group delete can be atomic.
 
+#### What is `eviction_group`? (checked in the library source)
+
+It's **a label put inside every key** of that kind, so you can delete them all together later.
+
+- `cache(ttl=60, eviction_group="users")` on `GET /users/5` stores the key `<prefix>:{users}:users:5`, and `GET /users/9` stores `<prefix>:{users}:users:9`. Both carry `{users}`.
+- **Delete one key** with `cache_evict(..., key_builder=...)`: only `...users:5` goes.
+- **Delete the whole group** with `cache_evict(eviction_group="users")` and no `key_builder`: every key containing `{users}` goes. Inside, it runs a small Lua script doing `SCAN MATCH <pattern>` and then `UNLINK` on each match.
+- **Why `{ }` braces?** In Redis Cluster, the part inside `{}` decides which node stores the key, so all `users` keys sit on the same node and can be deleted in one script. It has no effect on a single Redis.
+- **When is it useful?** When cached things only make sense together. For example, after a bulk import of 10k users, any cached user lists or user pages could be stale, so you clear the whole `users` group in one call.
+- ⚠️ Without a group or a `key_builder`, `cache_evict()` wipes **the entire cache**.
+
+**By hand:** use a prefix and delete by pattern.
+```python
+r.set(f"users:{user_id}", json.dumps(user), ex=60)   # every user key starts with "users:"
+
+r.delete(f"users:{user_id}")                          # one key
+
+for key in r.scan_iter(match="users:*"):               # whole group
+    r.delete(key)
+```
+Use `SCAN` (`scan_iter`), never `KEYS users:*`. `KEYS` walks every key in one go and blocks Redis while it runs. `SCAN` goes in small batches.
+
+**Say it in one line:** "An eviction group is a tag in the cache key, so related entries can be deleted together. By hand it's a key prefix plus SCAN and DELETE."
+
 ### 2. `Depends(cache_evict(eviction_group="users", key_builder=usr_key_builder))` on DELETE
 
 1. Lets the endpoint run first (`db.delete_user`).

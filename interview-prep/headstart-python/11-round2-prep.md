@@ -57,6 +57,51 @@ rate_limit([("u1",1), ("u1",2), ("u1",3), ("u1",4), ("u2",4), ("u1",11), ("u1",1
 - **One deque per user:** limits are per user, so u2 never counts against u1.
 - **Complexity:** each time is added once and removed once, so O(n) total. At most 3 timestamps are stored per user.
 
+**Line by line: what does `hits[user_id] = deque()` do?**
+
+It creates an **empty box for a new user** and stores it in the dict under that user's id.
+- `hits` is a dict: user id → that user's request times.
+- `deque()` makes a new, empty deque (think: an empty list).
+- `hits[user_id] = deque()` means "this user has no requests yet".
+
+It runs **only the first time** we see a user, because of the `if user_id not in hits:` line above it. Watch `hits` change:
+```python
+hits = {}
+# ("u1", 1): u1 is new  -> hits["u1"] = deque()  -> {"u1": deque([])}
+#            append 1                            -> {"u1": deque([1])}
+# ("u1", 2): u1 exists, skip creating            -> {"u1": deque([1, 2])}
+# ("u2", 4): u2 is new  -> hits["u2"] = deque()  -> {"u1": deque([1, 2]), "u2": deque([4])}
+```
+Without that line, `hits["u2"]` would crash with **KeyError** because u2 isn't in the dict yet. `defaultdict(deque)` does this automatically: the first time you touch a new key, it creates the empty deque for you.
+
+**Full walk-through of the example** `[(u1,1), (u1,2), (u1,3), (u1,4), (u2,4), (u1,11), (u1,12)]`:
+
+| Request | u1's deque before | Drop older than t−10 | Count | Result | Deque after |
+|---|---|---|---|---|---|
+| (u1, 1) | (new) [] | [] | 0 | ALLOW | [1] |
+| (u1, 2) | [1] | [1] | 1 | ALLOW | [1, 2] |
+| (u1, 3) | [1, 2] | [1, 2] | 2 | ALLOW | [1, 2, 3] |
+| (u1, 4) | [1, 2, 3] | [1, 2, 3] | 3 | **BLOCK** | [1, 2, 3] (blocked requests aren't stored) |
+| (u2, 4) | (new) [] | [] | 0 | ALLOW | u2: [4] |
+| (u1, 11) | [1, 2, 3] | drop 1 (1 ≤ 11−10) → [2, 3] | 2 | ALLOW | [2, 3, 11] |
+| (u1, 12) | [2, 3, 11] | drop 2 (2 ≤ 12−10) → [3, 11] | 2 | ALLOW | [3, 11, 12] |
+
+**Why deque and not something else? Is deque Python's queue?**
+
+`deque` (said "deck") means **double-ended queue**. It's Python's go-to queue: `from collections import deque`. Add at the back with `append`, remove from the front with `popleft`, and both are O(1).
+
+| Option | Remove the oldest | Verdict |
+|---|---|---|
+| `list` | `pop(0)` is **O(n)**: every other item shifts left | Works. With a limit of 3 the list never holds more than 3 items, so it's honestly fine here. Deque is the right habit for "remove from the front". |
+| `collections.deque` | `popleft()` is **O(1)** | Best fit: times arrive in order, so the oldest is always at the front. |
+| `queue.Queue` | `get()` | A **thread-safe** queue for passing work between threads. It has locks and no peeking at the front. Overkill here. |
+| `asyncio.Queue` | `await get()` | Same idea for async tasks. Not needed here. |
+| `heapq` | `heappop` O(log n) | For items that arrive **out of order**. Ours arrive in time order, so no heap is needed. |
+
+**Say it in one line:** "Requests come in time order, so the oldest is always at the front. A deque lets me drop from the front in O(1). A list would also work since it holds at most 3 items, but `pop(0)` is O(n) in general."
+
+**Why `<=` in `q[0] <= t - window`?** A request exactly 10 s old has just left the window. Either `<` or `<=` is fine if you say which one you chose and why.
+
 *If they push ("many servers?"):* the same idea in Redis, with one sorted set per user, so all servers share it. See Part 3.
 
 ### Cache: user with 5 s TTL

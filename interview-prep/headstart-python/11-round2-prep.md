@@ -4,6 +4,78 @@ Round 1 showed what they want: **not tool names, but what the tool does, what da
 
 **The rule for every design answer:** *what goes in → what code runs → what happens when it fails → what I give up.*
 
+## Part 0 · Simple first (learn this before anything else)
+
+**The rule:** give the **simplest version that works**, in plain words. Stop. Let them ask for more. Only then go one level deeper. Each extra tool you name (RabbitMQ, Lua, Kafka) is a new thing they can grill you on, so don't bring it up unless they push.
+
+But keep **one deeper layer ready** for each answer. In round 1 they pushed every time, and "simple" must still be **complete**: what goes in, what code runs, and what happens on failure.
+
+### Rate limiter: 3 requests per 10 s per user
+> "For each user I keep the times of their last requests. On a new request I drop times older than 10 seconds. If 3 are left, I block with 429. Otherwise I save this time and allow it."
+```python
+from collections import defaultdict, deque
+import time
+
+hits = defaultdict(deque)                      # user_id -> request times
+
+def allow(user_id):
+    now = time.time()
+    q = hits[user_id]
+    while q and q[0] <= now - 10:              # drop requests older than 10 s
+        q.popleft()
+    if len(q) >= 3:
+        return False                           # 4th request -> block (429)
+    q.append(now)
+    return True
+```
+*If they push ("many servers?"):* the same idea in Redis, with one sorted set per user, so all servers share it. See Part 3.
+
+### Cache: user with 5 s TTL
+> "First check Redis. If the user is there, return it. If not, read from the DB, save it in Redis for 5 seconds, and return it. When the user is updated, I delete the key."
+```python
+def get_user(uid):
+    cached = r.get(f"user:{uid}")
+    if cached:
+        return json.loads(cached)              # hit
+    user = db_get_user(uid)                    # miss -> DB
+    r.set(f"user:{uid}", json.dumps(user), ex=5)
+    return user
+```
+*If they push:* stampede, what not to cache. See Part 4.
+
+### Redis as a queue
+> "A Redis list is the queue. The API pushes a job id with LPUSH. A worker waits with BRPOP, takes the next job and processes it."
+```python
+r.lpush("jobs", job_id)                        # API side
+
+while True:                                    # worker side
+    _, job_id = r.brpop("jobs")                # waits until a job arrives
+    process(job_id.decode())
+```
+*If they push ("worker crashes mid-job?"):* move the job to a `processing` list and remove it only after success, plus retries. See Part 5. Mention RabbitMQ only if asked.
+
+### CSV: 5 users × 10 lakh rows
+> "I don't process it inside the request. **One:** save the file to storage, create a job, put the job id on a queue, and return the job id right away. **Two:** a worker reads the file **5,000 rows at a time**, inserts each batch in one query, and saves progress. **Three:** the user checks progress with the job id. If the worker crashes, it continues from the saved progress."
+```python
+def read_chunks(path, size=5000):              # generator: one chunk in memory at a time
+    with open(path) as f:
+        reader = csv.DictReader(f)
+        while chunk := list(islice(reader, size)):
+            yield chunk
+
+for chunk in read_chunks(path):
+    insert_many(chunk)                         # one batch insert
+    save_progress(job_id, rows_done)
+```
+*If they push:* what a job and job id are, why storage, why a queue, chunk size, duplicates. See Part 1.
+
+### Razorpay webhook
+> "Three checks: **one**, verify the signature, and reject it if it's wrong. **Two**, save the event id in a table where it's unique, and if it's already there, return 200 and do nothing. **Three**, update the order only if the change is allowed, for example never from paid back to failed. The event id and the order update are saved in one transaction."
+
+*If they push:* fake-then-real, late events, a crash midway. See Part 2.
+
+---
+
 All code is in [code/round2/](code/round2/) and every file runs its own tests:
 
 | File | What it shows | Run |
@@ -22,11 +94,11 @@ Setup once: `pip install redis fastapi httpx` and start Redis (`brew services st
 
 | Time | Do | Done when |
 |---|---|---|
-| 0:00–0:25 | **Rate limiter.** Write `InMemoryRateLimiter` from scratch without looking. Then read the Redis sorted-set version and explain why the Lua script makes it atomic. | You can type it in under 5 minutes and explain "drop old, count, allow or block". |
-| 0:25–0:45 | **Cache.** Write `get_user` with `SET key value EX 5`. Run it and watch MISS → HIT → MISS. | You can explain cache-aside, TTL and why you delete on update. |
-| 0:45–1:15 | **Queue + CSV.** Run `redis_queue.py`, then `csv_import.py`. Read `read_chunks` (generator) and `process_import` (chunk → batch insert → checkpoint) until you could rewrite them. | You can draw the CSV flow and say what the worker does line by line. |
+| 0:00–0:30 | **Part 0 only.** Type every snippet from memory and say every answer out loud. | You can give each one in under 30 seconds, with code. |
+| 0:30–0:50 | **Rate limiter + cache, one level deeper.** Run `rate_limiter.py` and `redis_cache.py`. Read the Redis sorted-set version once. | You can answer "many servers?" and "what if data changes?". |
+| 0:50–1:15 | **Queue + CSV.** Run `redis_queue.py`, then `csv_import.py`. Read `read_chunks` (generator) and `process_import` (chunk → batch insert → checkpoint) until you could rewrite them. | You can draw the CSV flow and say what the worker does line by line. |
 | 1:15–1:40 | **Say Part 1 and Part 2 out loud** (CSV design, Razorpay drill). Use a timer: 2 minutes each. | No "um, maybe RabbitMQ". Every box has a reason. |
-| 1:40–2:00 | **Rapid-fire (Part 5).** Cover the answer, say yours, check. | One clear sentence each. |
+| 1:40–2:00 | **Rapid-fire (Part 6).** Cover the answer, say yours, check. | One clear sentence each. |
 
 ---
 
@@ -45,6 +117,64 @@ Setup once: `pip install redis fastapi httpx` and start Redis (`brew services st
 > **Failures.** If a worker crashes, the job goes back on the queue and the next worker **resumes from the checkpoint**. A **unique constraint** like `(tenant_id, email)` with `ON CONFLICT DO NOTHING` means re-running a chunk never creates duplicates.
 >
 > **Five users at once:** with 5 workers, all 5 files run in parallel. With fewer workers they queue but still get instant responses and live progress. **What I give up:** more moving parts (queue, workers, storage) and results that aren't instant. The user waits for the result, but nobody waits for the API."
+
+## What is a "job"? (the basics, in case they start here)
+
+**Job:** a to-do note for work too slow to do while the user waits. It's **one row in a table**:
+
+```sql
+CREATE TABLE import_jobs (
+    id          UUID PRIMARY KEY,        -- the job id
+    user_id     UUID NOT NULL,           -- who asked
+    file_path   TEXT NOT NULL,           -- where the file is (S3 key)
+    status      TEXT NOT NULL,           -- queued -> processing -> done / failed
+    rows_done   INT  NOT NULL DEFAULT 0, -- progress + resume point
+    rows_failed INT  NOT NULL DEFAULT 0,
+    error       TEXT,
+    created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Job id:** the unique id of that row (a UUID). Like a **courier tracking number**: you get it instantly and use it later to ask "where's my parcel?".
+
+**Background job:** work done **outside the HTTP request**, by a separate **worker** process. The user doesn't wait for it; they check on it with the job id.
+
+**How a job is created and run, step by step:**
+```python
+# 1) API: create the job and return immediately
+@app.post("/imports", status_code=202)
+def create_import(file_key: str, user=Depends(current_user)):
+    job_id = str(uuid4())                                   # new tracking number
+    db.execute("INSERT INTO import_jobs (id, user_id, file_path, status) "
+               "VALUES (%s, %s, %s, 'queued')", (job_id, user.id, file_key))
+    redis.lpush("imports", job_id)                          # "wake up, there's work"
+    return {"job_id": job_id}                               # takes milliseconds
+
+# 2) WORKER: separate process, runs forever
+while True:
+    _, job_id = redis.brpop("imports")                      # wait for the next job id
+    job = db.fetch_one("SELECT * FROM import_jobs WHERE id = %s", (job_id,))
+    set_status(job_id, "processing")
+    try:
+        for chunk in read_chunks(job.file_path, skip=job.rows_done):
+            insert_many(chunk)
+            save_progress(job_id, ...)                      # rows_done += len(chunk)
+        set_status(job_id, "done")
+    except Exception as e:
+        set_status(job_id, "failed", error=str(e))
+
+# 3) API: user checks progress with the job id
+@app.get("/imports/{job_id}")
+def get_import(job_id: str):
+    return db.fetch_one("SELECT status, rows_done, rows_failed FROM import_jobs WHERE id = %s", (job_id,))
+```
+
+**Why both a table AND a queue?**
+- **Table** = the record: status, progress, errors, history. It's what the user's status API reads.
+- **Queue** = the **signal** that tells a free worker "there's work". It holds only the id.
+- If the queue loses a message (Redis restarts), the row is still `queued` in the table, so a small **sweeper** job re-pushes jobs stuck in `queued` for too long. The table is the source of truth.
+
+**Say it in one line:** "A job is a row that tracks slow work; the job id is its tracking number; the API creates the row and queues the id; a worker does the work and updates the row; the user polls with the id."
 
 ## The follow-ups they asked, with answers
 

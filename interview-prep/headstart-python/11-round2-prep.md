@@ -160,6 +160,7 @@ All code is in [code/round2/](code/round2/) and every file runs its own tests:
 | [redis_cache_simple.py](code/round2/redis_cache_simple.py) | The simple cache first: get_user with SET EX 5, update deletes the key, shows miss / hit / expiry | `python3 redis_cache_simple.py` |
 | [redis_cache.py](code/round2/redis_cache.py) | Get user with 5 s TTL: miss, hit, invalidate on update, expiry | `python3 redis_cache.py` |
 | [redis_basics.py](code/round2/redis_basics.py) | Redis from zero: every basic command (string, list, hash, sorted set) run and printed | `python3 redis_basics.py` |
+| [fastapi_cache_ratelimit.py](code/round2/fastapi_cache_ratelimit.py) | Hand-written version of the fastapi-redis-sdk snippets: GET cache, DELETE evict, PUT write-through, `rate_limit` dependency returning 429 | `python3 fastapi_cache_ratelimit.py` |
 | [redis_queue_simple.py](code/round2/redis_queue_simple.py) | The simple queue first: LPUSH + BRPOP (Level 1), then BLMOVE + LREM so a crash doesn't lose the job (Level 2) | `python3 redis_queue_simple.py` |
 | [redis_queue.py](code/round2/redis_queue.py) | Redis list as a queue: producer, workers, ack, retry, dead-letter, crash recovery. RabbitMQ version for comparison | `python3 redis_queue.py` |
 | [csv_import.py](code/round2/csv_import.py) | 5 users × 10 lakh rows: upload → queue → worker reads chunks with a generator → batch insert → progress → resume after crash | `python3 csv_import.py 1000000` |
@@ -499,6 +500,117 @@ return user
 - **"Missing user?"** Cache the "not found" briefly too, or repeated bad ids hammer the DB.
 - **"What Redis type?"** A string with JSON for the whole object, or a **hash** (`HSET user:1 name Asha age 21`) to read or update single fields.
 - **"Don't cache what?"** Money, permissions right after they change, and anything that must be exactly current.
+
+---
+
+# Part 4b · The library version: `cache()`, `cache_evict()`, `cache_put()`, `rate_limit()`
+
+Those snippets come from **fastapi-redis-sdk** (`pip install fastapi-redis-sdk`, `from redis_fastapi import ...`). It's Redis's official FastAPI SDK, announced in September 2026 ([blog](https://redis.io/blog/the-official-fastapi-redis-sdk-is-now-available/)). Everything below was checked against its source (v0.9.0), not guessed. Setup is one line:
+
+```python
+FastAPIRedis(app).lifespan().caching().rate_limiting()   # connect Redis on startup, close on shutdown
+```
+
+**Big idea:** it's the **same cache-aside and INCR counter as Part 4 and Part 3**. The library just runs it for you inside `Depends(...)`, so the endpoint body only talks to the DB.
+
+### 1. `Depends(cache(ttl=60, eviction_group="users"))` on GET: what happens
+
+1. **Builds a key from the URL.** `GET /users/5?x=1` becomes roughly `<prefix>:{users}:users:5:x=1`. The path's `/` turns into `:`, sorted query params are appended, and the group sits in `{}`.
+2. **Looks in Redis.**
+   - **HIT:** returns the cached response straight away. **Your endpoint function never runs.** It does this by raising an internal exception that a handler turns into the response.
+   - **MISS:** marks the request as "store this", lets your endpoint run (`db.get_user`), and then a middleware saves the response in Redis with **TTL 60 s**.
+3. It also adds HTTP headers: `X-Redis-Cache: HIT/MISS`, `ETag` and `Cache-Control`.
+
+**Eviction group = a label for keys that belong together** ("all user entries"). Later you can wipe the whole group at once. The `{users}` braces keep all of them on the same Redis Cluster node, so a group delete can be atomic.
+
+### 2. `Depends(cache_evict(eviction_group="users", key_builder=usr_key_builder))` on DELETE
+
+1. Lets the endpoint run first (`db.delete_user`).
+2. **Only if it succeeded**, it deletes the cache entry.
+   - **With `key_builder`**, it deletes **just that one key**, here user 5. `usr_key_builder` is the app's own function and must build the **same key** the GET used.
+   - **Without `key_builder`**, it deletes the **whole `users` group**: every cached user.
+3. If the endpoint raised an error, nothing is deleted, because the DB didn't change.
+
+### 3. `Depends(cache_put(eviction_group="users", ttl=300))` on PUT: write-through
+
+1. The endpoint **always runs** (`db.update`).
+2. Then its response is **written into the cache** under the same key, with **TTL 300 s**.
+3. So the next GET is already a hit with the **new** data. This is **write-through**: write the DB, then write the cache. Compare **delete on update** in Part 4, where the next GET is a miss.
+
+> Small thing to notice: GET caches for 60 s, but PUT writes with 300 s, so an entry written by PUT lives 5 minutes. Fine if you mean it. Keep the TTLs equal if you don't.
+
+### 4. `Depends(rate_limit("100/minute"))`
+
+1. `"100/minute"` means **limit 100, window 60 s**.
+2. **Counter key** = `<prefix>:<scope>:<client IP>`. The scope defaults to the route, so each route and each IP gets its own counter.
+3. **Algorithm:** a **fixed-window counter**, the same as `INCR` + `EXPIRE` in [12-redis-basics.md](12-redis-basics.md) section 5. The library does it atomically, with `INCREX` on Redis 8.8+ or a small Lua script on older versions.
+4. Over the limit, it returns **429 Too Many Requests** with `Retry-After` plus `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`. The endpoint doesn't run.
+5. You can stack two limits (`"10/second"` for bursts and `"100/minute"` for sustained traffic) with different `scope=` values, or pass `identifier=` to count per user instead of per IP.
+
+### The simple hand-written version (say and type this)
+
+Runnable with tests: [fastapi_cache_ratelimit.py](code/round2/fastapi_cache_ratelimit.py) (`python3 fastapi_cache_ratelimit.py`).
+
+```python
+def user_key(user_id):
+    return f"user:{user_id}"                       # ONE key format for GET, PUT, DELETE
+
+@app.get("/users/{user_id}")                       # = cache(ttl=60)
+async def get_user(user_id: int):
+    cached = await r.get(user_key(user_id))
+    if cached is not None:
+        return json.loads(cached)                  # HIT
+    user = await db.get_user(user_id)              # MISS
+    await r.set(user_key(user_id), json.dumps(user), ex=60)
+    return user
+
+@app.delete("/users/{user_id}")                    # = cache_evict(key_builder=...)
+async def delete_user(user_id: int):
+    await db.delete_user(user_id)                  # DB first
+    await r.delete(user_key(user_id))              # then drop the cached copy
+
+@app.put("/users/{user_id}")                       # = cache_put(ttl=300)
+async def replace_user(user_id: int, body: User):
+    user = await db.update(user_id, body)          # DB first
+    await r.set(user_key(user_id), json.dumps(user), ex=300)   # then write the new copy
+    return user
+```
+
+```python
+def rate_limit(limit: int, window: int):           # = rate_limit("100/minute")
+    async def check(request: Request):
+        key = f"rate:{request.url.path}:{request.client.host}"
+        count = await r.incr(key)                  # 1, 2, 3 ...
+        if count == 1:
+            await r.expire(key, window)            # first request starts the window
+        if count > limit:
+            raise HTTPException(429, "Too Many Requests",
+                                headers={"Retry-After": str(await r.ttl(key))})
+    return check
+
+@app.get("/api", dependencies=[Depends(rate_limit(100, 60))])
+async def api():
+    return {"ok": True}
+```
+
+**Why is `rate_limit` a function that returns a function?** `Depends()` needs a function FastAPI can call on every request. `rate_limit(100, 60)` runs **once** at startup and returns `check`, which "remembers" 100 and 60 (a closure). FastAPI then calls `check(request)` on every request. If `check` raises, the endpoint never runs. The library's `rate_limit("100/minute")` works the same way.
+
+**Why is the cache inside the endpoint and not a `Depends` in the simple version?** A dependency can't simply return the response and skip the endpoint. The library needs an exception handler for hits and a middleware to capture the response on a miss. Writing it in the endpoint is the plain, readable version.
+
+### Library or hand-written?
+
+- **Use the library** in a real project. It covers the edge cases for you: atomic Lua, `Retry-After` and `X-RateLimit-*` headers, ETag and `Cache-Control`, per-user cache entries, Redis Cluster, and metrics.
+- **Write it by hand** in an interview, or when you need custom logic (cache only some results, a TTL based on the data, a limit per tenant). The library offers a `CacheBackend` / `RateLimitBackend` for that too.
+
+**Say it in one line:** "These are cache-aside, delete-on-delete, write-through-on-update and a fixed-window INCR counter, packaged as FastAPI dependencies. By hand, it's `GET`/`SET EX`/`DEL` and `INCR`+`EXPIRE` with a 429."
+
+### Follow-ups
+
+- **"Cache key per user? Two users see the same `/me`?"** The default key is the URL only. If the response depends on who's asking, the key must include the user, for example `user:{id}`. A shared key would leak one user's data to another. The library has `vary_on_session=True` for this.
+- **"Rate limit by IP: what about users behind one office Wi-Fi?"** They share one counter. Limit by user id or API key instead, using an `identifier=` function.
+- **"Fixed window weakness?"** It allows up to double the limit around the window edge, for example 100 at 0:59 and 100 at 1:01. For a strict limit, use the sliding window (sorted set) in Part 3.
+- **"Redis down?"** For the cache, skip Redis and read the DB. For the rate limiter, decide between fail open (allow) and fail closed (block). Most APIs fail open.
+- **"Write-through or delete on update?"** Write-through gives a hit right after an update, but two concurrent PUTs can leave the older one in the cache. Delete-on-update is always safe and just costs one miss.
 
 ---
 

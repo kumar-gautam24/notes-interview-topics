@@ -67,7 +67,7 @@ for chunk in read_chunks(path):
     insert_many(chunk)                         # one batch insert
     save_progress(job_id, rows_done)
 ```
-*If they push:* why storage, why a queue, chunk size, duplicates. See Part 1.
+*If they push:* what a job and job id are, why storage, why a queue, chunk size, duplicates. See Part 1.
 
 ### Razorpay webhook
 > "Three checks: **one**, verify the signature, and reject it if it's wrong. **Two**, save the event id in a table where it's unique, and if it's already there, return 200 and do nothing. **Three**, update the order only if the change is allowed, for example never from paid back to failed. The event id and the order update are saved in one transaction."
@@ -117,6 +117,64 @@ Setup once: `pip install redis fastapi httpx` and start Redis (`brew services st
 > **Failures.** If a worker crashes, the job goes back on the queue and the next worker **resumes from the checkpoint**. A **unique constraint** like `(tenant_id, email)` with `ON CONFLICT DO NOTHING` means re-running a chunk never creates duplicates.
 >
 > **Five users at once:** with 5 workers, all 5 files run in parallel. With fewer workers they queue but still get instant responses and live progress. **What I give up:** more moving parts (queue, workers, storage) and results that aren't instant. The user waits for the result, but nobody waits for the API."
+
+## What is a "job"? (the basics, in case they start here)
+
+**Job:** a to-do note for work too slow to do while the user waits. It's **one row in a table**:
+
+```sql
+CREATE TABLE import_jobs (
+    id          UUID PRIMARY KEY,        -- the job id
+    user_id     UUID NOT NULL,           -- who asked
+    file_path   TEXT NOT NULL,           -- where the file is (S3 key)
+    status      TEXT NOT NULL,           -- queued -> processing -> done / failed
+    rows_done   INT  NOT NULL DEFAULT 0, -- progress + resume point
+    rows_failed INT  NOT NULL DEFAULT 0,
+    error       TEXT,
+    created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Job id:** the unique id of that row (a UUID). Like a **courier tracking number**: you get it instantly and use it later to ask "where's my parcel?".
+
+**Background job:** work done **outside the HTTP request**, by a separate **worker** process. The user doesn't wait for it; they check on it with the job id.
+
+**How a job is created and run, step by step:**
+```python
+# 1) API: create the job and return immediately
+@app.post("/imports", status_code=202)
+def create_import(file_key: str, user=Depends(current_user)):
+    job_id = str(uuid4())                                   # new tracking number
+    db.execute("INSERT INTO import_jobs (id, user_id, file_path, status) "
+               "VALUES (%s, %s, %s, 'queued')", (job_id, user.id, file_key))
+    redis.lpush("imports", job_id)                          # "wake up, there's work"
+    return {"job_id": job_id}                               # takes milliseconds
+
+# 2) WORKER: separate process, runs forever
+while True:
+    _, job_id = redis.brpop("imports")                      # wait for the next job id
+    job = db.fetch_one("SELECT * FROM import_jobs WHERE id = %s", (job_id,))
+    set_status(job_id, "processing")
+    try:
+        for chunk in read_chunks(job.file_path, skip=job.rows_done):
+            insert_many(chunk)
+            save_progress(job_id, ...)                      # rows_done += len(chunk)
+        set_status(job_id, "done")
+    except Exception as e:
+        set_status(job_id, "failed", error=str(e))
+
+# 3) API: user checks progress with the job id
+@app.get("/imports/{job_id}")
+def get_import(job_id: str):
+    return db.fetch_one("SELECT status, rows_done, rows_failed FROM import_jobs WHERE id = %s", (job_id,))
+```
+
+**Why both a table AND a queue?**
+- **Table** = the record: status, progress, errors, history. It's what the user's status API reads.
+- **Queue** = the **signal** that tells a free worker "there's work". It holds only the id.
+- If the queue loses a message (Redis restarts), the row is still `queued` in the table, so a small **sweeper** job re-pushes jobs stuck in `queued` for too long. The table is the source of truth.
+
+**Say it in one line:** "A job is a row that tracks slow work; the job id is its tracking number; the API creates the row and queues the id; a worker does the work and updates the row; the user polls with the id."
 
 ## The follow-ups they asked, with answers
 

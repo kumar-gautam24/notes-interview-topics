@@ -16,6 +16,7 @@
 | 10 | [10-project-questions.md](10-project-questions.md) | Questions your own projects will trigger (wallet, webhooks, workers, auth bugs, ABDM, gateway, multi-tenant) with follow-ups |
 | 11 | [11-round2-prep.md](11-round2-prep.md) | Round 2: CSV import design, Razorpay webhook drill, rate limiter, Redis cache and queue, rapid-fire, with runnable code in code/round2/ |
 | 12 | [12-redis-basics.md](12-redis-basics.md) | Redis from zero: what it is, why it's fast, running it, the 4 data types with commands, cache / rate limit / queue, persistence, follow-ups |
+| 13 | [13-final-sheet.md](13-final-sheet.md) | **Round 2 in one sheet:** every question to prepare (round 1 + today's), each with a simple guided answer, code and follow-ups |
 | code | [solutions.cpp](code/solutions.cpp) | All DSA solutions with asserts: `g++ -std=c++17 -O2 solutions.cpp -o sol && ./sol` |
 | code | [fastapi_demo.py](code/fastapi_demo.py) | One-file multi-tenant CRM API showing every FastAPI pattern; `python3 fastapi_demo.py` runs its tests |
 | code | [design_patterns.py](code/design_patterns.py) | 14 patterns in one file with tests: `python3 design_patterns.py` |

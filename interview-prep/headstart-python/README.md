@@ -16,6 +16,8 @@ Start with [00-start-here.md](00-start-here.md): it maps every JD point and scre
 | [08-design-patterns.md](08-design-patterns.md) | Design patterns for a Python backend with your real examples, tested code and follow-ups |
 | [09-self-intro.md](09-self-intro.md) | Full project bank plus three self-intros (backend, SDE, Flutter) in 30s / 90s / 2min, with follow-ups |
 | [10-project-questions.md](10-project-questions.md) | Questions your own projects will trigger, with simple answers and follow-ups |
+| [11-round2-prep.md](11-round2-prep.md) | Round 2: CSV import design, Razorpay webhook drill, rate limiter, Redis cache and queue, rapid-fire |
+| [code/round2/](code/round2/) | Runnable: rate limiter, Redis cache, Redis queue, 10-lakh CSV import, Razorpay webhooks |
 | [code/solutions.cpp](code/solutions.cpp) | DSA solutions with asserts: `g++ -std=c++17 -O2 solutions.cpp -o sol && ./sol` |
 | [code/fastapi_demo.py](code/fastapi_demo.py) | One-file multi-tenant API demo with tests: `pip install fastapi httpx pyjwt && python3 fastapi_demo.py` |
 | [code/design_patterns.py](code/design_patterns.py) | 14 design patterns with tests: `python3 design_patterns.py` |

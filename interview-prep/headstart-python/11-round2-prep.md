@@ -117,7 +117,7 @@ def get_user(uid):
     r.set(f"user:{uid}", json.dumps(user), ex=5)
     return user
 ```
-*If they push:* stampede, what not to cache. See Part 4.
+*If they push:* stampede, what not to cache. Part 4 explains it step by step.
 
 ### Redis as a queue
 > "A Redis list is the queue. The API pushes a job id with LPUSH. A worker waits with BRPOP, takes the next job and processes it."
@@ -157,6 +157,7 @@ All code is in [code/round2/](code/round2/) and every file runs its own tests:
 | File | What it shows | Run |
 |---|---|---|
 | [rate_limiter.py](code/round2/rate_limiter.py) | 3 requests / 10 s per user: deque, tuple list, Redis sorted set, Redis counter | `python3 rate_limiter.py` |
+| [redis_cache_simple.py](code/round2/redis_cache_simple.py) | The simple cache first: get_user with SET EX 5, update deletes the key, shows miss / hit / expiry | `python3 redis_cache_simple.py` |
 | [redis_cache.py](code/round2/redis_cache.py) | Get user with 5 s TTL: miss, hit, invalidate on update, expiry | `python3 redis_cache.py` |
 | [redis_basics.py](code/round2/redis_basics.py) | Redis from zero: every basic command (string, list, hash, sorted set) run and printed | `python3 redis_basics.py` |
 | [redis_queue_simple.py](code/round2/redis_queue_simple.py) | The simple queue first: LPUSH + BRPOP (Level 1), then BLMOVE + LREM so a crash doesn't lose the job (Level 2) | `python3 redis_queue_simple.py` |
@@ -379,6 +380,106 @@ Code for every case: [razorpay_webhook.py](code/round2/razorpay_webhook.py).
 ---
 
 # Part 4 · Redis cache (user, TTL 5 s)
+
+## Step by step (learn this part first)
+
+Redis basics (what `SET`, `GET` and `EX` are): [12-redis-basics.md](12-redis-basics.md), section 3a.
+Code: [redis_cache_simple.py](code/round2/redis_cache_simple.py). Run it with `python3 redis_cache_simple.py`, and it shows miss, hit, update and expiry.
+
+### 1. What is the question really asking?
+
+"Store a user in Redis with TTL 5 seconds" means:
+- **Cache** = keep a copy of the user somewhere fast (Redis), so we don't ask the slow database every time.
+- **TTL (time to live) = 5 s** = the copy **deletes itself after 5 seconds**. Redis does that for you.
+
+Real-life example: you write a friend's phone number on a sticky note so you don't search your contacts every time, and the note dissolves after 5 seconds. Then you look it up again and write a new note.
+
+**Why the TTL?** The database can change. With a 5 s TTL, the cached copy is **never more than 5 seconds old**, even if we forget to clean it up.
+
+### 2. The two Redis commands you need
+
+```python
+r.set("user:1", '{"id": 1, "name": "Asha", "age": 21}', ex=5)   # save, auto-delete after 5 s
+r.get("user:1")    # the JSON string, or None if missing / expired
+```
+- `ex=5` is the TTL in seconds (`SET key value EX 5`).
+- Redis stores **strings**, so we turn the dict into JSON with `json.dumps` and back with `json.loads`.
+- `r.ttl("user:1")` shows the seconds left. `-2` means the key is already gone.
+
+### 3. The code (this is the whole answer)
+
+```python
+def get_user(user_id):
+    key = f"user:{user_id}"
+    cached = r.get(key)                         # 1. look in Redis
+    if cached is not None:
+        return json.loads(cached)               # 2. found -> HIT, no DB call
+    user = db_get_user(user_id)                 # 3. not found -> MISS, ask the DB
+    if user is not None:
+        r.set(key, json.dumps(user), ex=5)      # 4. save a copy for 5 s
+    return user
+```
+
+Line by line:
+1. `key = f"user:{user_id}"`: one key per user, such as `user:1` and `user:2`.
+2. `r.get(key)`: ask Redis. It returns the JSON string, or `None` if it was never stored or already expired.
+3. `if cached is not None: return json.loads(cached)`: a **hit**. We answer from Redis in under a millisecond, with no DB involved.
+4. `db_get_user(user_id)`: a **miss**. Read from Postgres the normal way.
+5. `r.set(key, json.dumps(user), ex=5)`: put a copy in Redis so the next 5 seconds of requests are hits.
+6. `if user is not None`: don't cache "nothing" here (see the follow-ups).
+
+This pattern is called **cache-aside**: the app checks the cache first, and fills it itself on a miss.
+
+### 4. Walk-through
+
+| Time | Call | Redis has `user:1`? | Result | DB called? |
+|---|---|---|---|---|
+| 0.0 s | `get_user(1)` | no | MISS, read DB, `SET ... EX 5` | yes |
+| 1.0 s | `get_user(1)` | yes (4 s left) | HIT | no |
+| 3.0 s | `get_user(1)` | yes (2 s left) | HIT | no |
+| 5.0 s | Redis deletes the key by itself | no | | |
+| 6.0 s | `get_user(1)` | no | MISS, read DB, `SET ... EX 5` again | yes |
+
+When I ran it locally, a miss took about 100 ms (the fake slow DB) and a hit took about 0.2 ms.
+
+### 5. When the user is updated
+
+```python
+def update_user_age(user_id, age):
+    db_update_age(user_id, age)          # 1. write the DB first (source of truth)
+    r.delete(f"user:{user_id}")          # 2. delete the old copy
+```
+The next `get_user` is a miss and loads the new age. Without the delete, readers could see the old age for up to 5 s. Sometimes that's acceptable, and then the TTL alone is enough.
+
+### 6. FastAPI endpoint (if they want it as an API)
+
+```python
+r = redis.Redis(decode_responses=True)       # created once at startup
+
+@app.get("/users/{user_id}")
+def read_user(user_id: int):
+    user = get_user(user_id)
+    if user is None:
+        raise HTTPException(404, "User not found")
+    return user
+```
+Async version: `import redis.asyncio as redis`, `async def`, and `await r.get(...)` / `await r.set(...)`.
+
+**Say it in one line:** "I check Redis for `user:{id}`. If it's there, I return it. If not, I read the DB, store it with `SET ... EX 5` and return it. Redis deletes it after 5 seconds, so it's never more than 5 seconds stale, and on update I delete the key."
+
+### 7. Follow-ups (simple answers)
+
+- **"Why delete on update, not update the cache?"** Two updates at the same time could write the cache in the wrong order and leave old data. Deleting is always safe: the next read loads the truth.
+- **"Why 5 seconds? How do you pick a TTL?"** It's how stale the data is allowed to be. A user's name can be minutes old. A wallet balance should never come from cache.
+- **"User doesn't exist, and someone keeps asking for id 999?"** Every call is a miss and hits the DB. Fix: cache "not found" briefly too, for example store `"null"` with `ex=5`. That's in [redis_cache.py](code/round2/redis_cache.py).
+- **"Redis is down?"** Wrap the Redis calls in `try/except` and fall back to the DB. The cache is a speed-up, so the app must still work without it.
+- **"Cache stampede?"** A very popular key expires, and 1,000 requests miss at the same moment and all hit the DB. Fixes, simplest first: add a little random time to the TTL (`ex=5 + random.randint(0, 2)`) so keys don't all expire together, or let only one request refill using a short lock (`SET lock:user:1 1 NX EX 2`) while the others wait briefly or get the old value.
+- **"String or hash?"** A string with JSON is simplest for reading the whole user. A hash (`HSET user:1 name Asha age 21`) lets you read or change one field. Note that `EXPIRE` works on the whole key either way.
+- **"What should NOT be cached?"** Money, permissions right after they change, and anything that must be exactly current.
+
+---
+
+## Full version (one level deeper)
 
 **Say this:**
 > "Cache-aside: look in Redis for `user:{id}`. On a **hit**, return it. On a **miss**, read the database, store it with `SET user:{id} <json> EX 5`, and return it. After 5 seconds Redis deletes it automatically, so data is at most 5 seconds stale. On **update** I write the database first, then **delete** the cache key, so the next read loads fresh data."

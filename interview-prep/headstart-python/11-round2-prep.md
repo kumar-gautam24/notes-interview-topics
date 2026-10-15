@@ -6,6 +6,8 @@ Round 1 showed what they want: **not tool names, but what the tool does, what da
 
 ## Part 0 · Simple first (learn this before anything else)
 
+**New to Redis?** Read [12-redis-basics.md](12-redis-basics.md) first (about 20 minutes). It explains every Redis command used below.
+
 **The rule:** give the **simplest version that works**, in plain words. Stop. Let them ask for more. Only then go one level deeper. Each extra tool you name (RabbitMQ, Lua, Kafka) is a new thing they can grill you on, so don't bring it up unless they push.
 
 But keep **one deeper layer ready** for each answer. In round 1 they pushed every time, and "simple" must still be **complete**: what goes in, what code runs, and what happens on failure.
@@ -156,6 +158,7 @@ All code is in [code/round2/](code/round2/) and every file runs its own tests:
 |---|---|---|
 | [rate_limiter.py](code/round2/rate_limiter.py) | 3 requests / 10 s per user: deque, tuple list, Redis sorted set, Redis counter | `python3 rate_limiter.py` |
 | [redis_cache.py](code/round2/redis_cache.py) | Get user with 5 s TTL: miss, hit, invalidate on update, expiry | `python3 redis_cache.py` |
+| [redis_basics.py](code/round2/redis_basics.py) | Redis from zero: every basic command (string, list, hash, sorted set) run and printed | `python3 redis_basics.py` |
 | [redis_queue_simple.py](code/round2/redis_queue_simple.py) | The simple queue first: LPUSH + BRPOP (Level 1), then BLMOVE + LREM so a crash doesn't lose the job (Level 2) | `python3 redis_queue_simple.py` |
 | [redis_queue.py](code/round2/redis_queue.py) | Redis list as a queue: producer, workers, ack, retry, dead-letter, crash recovery. RabbitMQ version for comparison | `python3 redis_queue.py` |
 | [csv_import.py](code/round2/csv_import.py) | 5 users × 10 lakh rows: upload → queue → worker reads chunks with a generator → batch insert → progress → resume after crash | `python3 csv_import.py 1000000` |
@@ -401,6 +404,8 @@ return user
 # Part 5 · Redis as a queue vs RabbitMQ (hands-on)
 
 ## Step by step (learn this part first)
+
+Need Redis basics first (what a list is, LPUSH, BRPOP)? See [12-redis-basics.md](12-redis-basics.md).
 
 Code for this part: [redis_queue_simple.py](code/round2/redis_queue_simple.py) (Level 1 and Level 2, with tests). Run it with `python3 redis_queue_simple.py`.
 

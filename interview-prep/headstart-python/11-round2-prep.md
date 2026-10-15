@@ -86,6 +86,20 @@ Without that line, `hits["u2"]` would crash with **KeyError** because u2 isn't i
 | (u1, 11) | [1, 2, 3] | drop 1 (1 ≤ 11−10) → [2, 3] | 2 | ALLOW | [2, 3, 11] |
 | (u1, 12) | [2, 3, 11] | drop 2 (2 ≤ 12−10) → [3, 11] | 2 | ALLOW | [3, 11, 12] |
 
+**Why deque and not something else? Is deque Python's queue?**
+
+`deque` (said "deck") means **double-ended queue**. It's Python's go-to queue: `from collections import deque`. Add at the back with `append`, remove from the front with `popleft`, and both are O(1).
+
+| Option | Remove the oldest | Verdict |
+|---|---|---|
+| `list` | `pop(0)` is **O(n)**: every other item shifts left | Works. With a limit of 3 the list never holds more than 3 items, so it's honestly fine here. Deque is the right habit for "remove from the front". |
+| `collections.deque` | `popleft()` is **O(1)** | Best fit: times arrive in order, so the oldest is always at the front. |
+| `queue.Queue` | `get()` | A **thread-safe** queue for passing work between threads. It has locks and no peeking at the front. Overkill here. |
+| `asyncio.Queue` | `await get()` | Same idea for async tasks. Not needed here. |
+| `heapq` | `heappop` O(log n) | For items that arrive **out of order**. Ours arrive in time order, so no heap is needed. |
+
+**Say it in one line:** "Requests come in time order, so the oldest is always at the front. A deque lets me drop from the front in O(1). A list would also work since it holds at most 3 items, but `pop(0)` is O(n) in general."
+
 **Why `<=` in `q[0] <= t - window`?** A request exactly 10 s old has just left the window. Either `<` or `<=` is fine if you say which one you chose and why.
 
 *If they push ("many servers?"):* the same idea in Redis, with one sorted set per user, so all servers share it. See Part 3.
